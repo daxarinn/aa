@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AA meetings scrape once per day
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+Unit=aa-scrape.service
+
+[Install]
+WantedBy=timers.target

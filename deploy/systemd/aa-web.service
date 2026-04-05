@@ -1,0 +1,18 @@
+[Unit]
+Description=AA meetings web service
+After=network.target
+
+[Service]
+Type=simple
+User=aa
+Group=www-data
+WorkingDirectory=/srv/aa/app
+EnvironmentFile=/srv/aa/app/deploy/aa.env
+ExecStart=/srv/aa/app/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8008 wsgi:app
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

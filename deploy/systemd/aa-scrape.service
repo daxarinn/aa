@@ -1,0 +1,14 @@
+[Unit]
+Description=AA meetings daily scrape and backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=aa
+Group=www-data
+WorkingDirectory=/srv/aa/app
+EnvironmentFile=/srv/aa/app/deploy/aa.env
+ExecStart=/srv/aa/app/.venv/bin/python scripts/scrape_and_backup.py
+StandardOutput=journal
+StandardError=journal
