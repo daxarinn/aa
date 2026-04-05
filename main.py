@@ -682,6 +682,63 @@ CARD_TEMPLATE = """
     {% if filters["view"] == "locations" %}
     <section class="mapping-section">
       <article class="mapping-card">
+        <h3>Skráðar staðamappanir</h3>
+        {% if mapped_location_rows %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Alias</th>
+              <th>Canonical</th>
+              <th>Gælunafn</th>
+              <th>Aðgerðir</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in mapped_location_rows %}
+            <tr>
+              <td>
+                {{ row["location_text"] }}
+                <div class="mapping-meta">{{ row["normalized_key"] }}</div>
+              </td>
+              <td>
+                <form class="mapping-form" method="post" action="/locations/map">
+                  <input type="hidden" name="alias_location_text" value="{{ row["location_text"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
+                  <input type="text" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
+                  <button type="submit">Vista</button>
+                </form>
+              </td>
+              <td>
+                <form class="mapping-form" method="post" action="/locations/nickname">
+                  <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
+                  <input type="text" name="nickname" value="{{ row["location_nickname"] }}" placeholder="Holtagarðar">
+                  <button type="submit">Vista</button>
+                </form>
+              </td>
+              <td class="mapping-meta">
+                <form method="post" action="/locations/map">
+                  <input type="hidden" name="alias_location_text" value="{{ row["location_text"] }}">
+                  <input type="hidden" name="canonical_location_text" value="">
+                  <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
+                  <button type="submit">Hreinsa mapping</button>
+                </form>
+                <form method="post" action="/locations/nickname">
+                  <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
+                  <input type="hidden" name="nickname" value="">
+                  <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
+                  <button type="submit">Hreinsa gælunafn</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engar vistaðar staðamappanir eða gælunöfn hafa verið skráð enn.</p>
+        {% endif %}
+      </article>
+      <article class="mapping-card">
         <h3>Tillögur að samruna</h3>
         <p class="mapping-meta">Hér sjást staðsetningar sem líta út fyrir að vera sama heimilisfang með mismunandi rithætti. Vistaðu canonical heiti fyrir hvert alias. Ef canonical er tómt eða sama og alias, er mapping fjarlægt.</p>
         {% if location_clusters %}
@@ -783,52 +840,54 @@ CARD_TEMPLATE = """
     {% elif filters["view"] == "church" %}
     <section class="mapping-section">
       <article class="mapping-card">
-        <h3>Ný kirkjusamkoma</h3>
+        <h3>{% if church_edit_event %}Breyta kirkjusamkomu{% else %}Ný kirkjusamkoma{% endif %}</h3>
         <p class="mapping-meta">Handfærðar samkomur sem hægt er að kveikja á í venjulegu fundayfirliti með filter.</p>
         <form class="filters" method="post" action="/church/save">
+          {% if church_edit_event %}<input type="hidden" name="event_id" value="{{ church_edit_event["event_id"] }}">{% endif %}
           <input type="hidden" name="redirect_query" value="{{ church_query_string }}">
           <div class="filter-field">
             <label for="church_title">Heiti</label>
-            <input id="church_title" type="text" name="title" placeholder="Messa, samvera...">
+            <input id="church_title" type="text" name="title" placeholder="Messa, samvera..." value="{{ church_edit_event["title"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_weekday">Vikudagur</label>
             <select id="church_weekday" name="weekday_is">
               {% for value in options["weekday_is"] %}
-              <option value="{{ value }}">{{ value }}</option>
+              <option value="{{ value }}" {% if church_edit_event and church_edit_event["weekday_is"] == value %}selected{% endif %}>{{ value }}</option>
               {% endfor %}
             </select>
           </div>
           <div class="filter-field">
             <label for="church_start_time">Frá tími</label>
-            <input id="church_start_time" type="time" name="start_time">
+            <input id="church_start_time" type="time" name="start_time" value="{{ church_edit_event["start_time"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_end_time">Til tíma</label>
-            <input id="church_end_time" type="time" name="end_time">
+            <input id="church_end_time" type="time" name="end_time" value="{{ church_edit_event["end_time"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_subtitle">Undirlína</label>
-            <input id="church_subtitle" type="text" name="subtitle" placeholder="Prestur, efni...">
+            <input id="church_subtitle" type="text" name="subtitle" placeholder="Prestur, efni..." value="{{ church_edit_event["subtitle"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_location_text">Staðsetning</label>
-            <input id="church_location_text" type="text" name="location_text" placeholder="Reykjavík...">
+            <input id="church_location_text" type="text" name="location_text" placeholder="Reykjavík..." value="{{ church_edit_event["location_text"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_venue_text">Staður</label>
-            <input id="church_venue_text" type="text" name="venue_text" placeholder="Hallgrímskirkja...">
+            <input id="church_venue_text" type="text" name="venue_text" placeholder="Hallgrímskirkja..." value="{{ church_edit_event["venue_text"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_notes">Glósur</label>
-            <input id="church_notes" type="text" name="notes" placeholder="Sálmar, kaffi...">
+            <input id="church_notes" type="text" name="notes" placeholder="Sálmar, kaffi..." value="{{ church_edit_event["notes"] if church_edit_event else "" }}">
           </div>
           <div class="filter-field">
             <label for="church_source_page_url">Slóð</label>
-            <input id="church_source_page_url" type="url" name="source_page_url" placeholder="https://...">
+            <input id="church_source_page_url" type="url" name="source_page_url" placeholder="https://..." value="{{ church_edit_event["source_page_url"] if church_edit_event else "" }}">
           </div>
           <div class="filter-actions">
-            <button type="submit">Vista kirkjusamkomu</button>
+            <button type="submit">{% if church_edit_event %}Uppfæra kirkjusamkomu{% else %}Vista kirkjusamkomu{% endif %}</button>
+            {% if church_edit_event %}<a href="/?view=church">Hætta við</a>{% endif %}
           </div>
         </form>
       </article>
@@ -862,6 +921,7 @@ CARD_TEMPLATE = """
                 {% if item["source_page_url"] %}<br><a href="{{ item["source_page_url"] }}" target="_blank" rel="noreferrer">Slóð</a>{% endif %}
               </td>
               <td>
+                <a href="/?view=church&edit_event_id={{ item["event_id"] }}">Breyta</a>
                 <form method="post" action="/church/delete">
                   <input type="hidden" name="event_id" value="{{ item["event_id"] }}">
                   <input type="hidden" name="redirect_query" value="{{ church_query_string }}">
@@ -898,10 +958,10 @@ CARD_TEMPLATE = """
           {% for row in cell %}
           <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
-            <h3 class="slot-title">{{ row["meeting_name"] or "Ónefndur fundur" }}</h3>
+            <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
             <p class="slot-summary">{{ row["summary_display"] }}</p>
             <div class="slot-tooltip">
-              <p class="slot-tooltip-title">{{ row["meeting_name"] or "Ónefndur fundur" }}</p>
+              <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
               {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
               {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
               {% if row["location_text"] %}<p class="slot-meta">{{ row["location_text"] }}</p>{% endif %}
@@ -940,7 +1000,7 @@ CARD_TEMPLATE = """
           {% if row["access_restriction"] %}<span class="pill">{{ row["access_restriction"] }}</span>{% endif %}
           {% if row["format"] %}<span class="pill">{{ row["format"] }}</span>{% endif %}
         </div>
-        <h2>{{ row["meeting_name"] or "Ónefndur fundur" }}</h2>
+        <h2>{{ row["meeting_name_display"] }}</h2>
         {% if row["subtitle"] %}<p class="line"><strong>Undirlína:</strong> {{ row["subtitle"] }}</p>{% endif %}
         {% if row["location_nickname"] %}<p class="line"><strong>Gælunafn:</strong> {{ row["location_nickname"] }}</p>{% endif %}
         {% if row["location_text"] %}<p class="line"><strong>Staðsetning:</strong> {{ row["location_text"] }}</p>{% endif %}
@@ -969,6 +1029,7 @@ CARD_TEMPLATE = """
   const filtersCookieName = "{{ filters_cookie_name }}";
   const favoritesCookieName = "{{ favorites_cookie_name }}";
   const filtersCollapsedKey = "aa-filters-collapsed";
+  const defaultWeekday = "{{ default_weekday }}";
   const maxFavorites = 200;
 
   const getCookie = (name) => {
@@ -1043,6 +1104,8 @@ CARD_TEMPLATE = """
   const filtersForm = document.getElementById('filtersForm');
   const clearFiltersLink = document.getElementById('clearFiltersLink');
   const filterToggle = document.getElementById('filterToggle');
+  const weekdaySelect = document.getElementById('weekday');
+  const favoritesOnlySelect = document.getElementById('favorites_only');
   const setFiltersCollapsed = (collapsed) => {
     if (!filtersForm || !filterToggle) return;
     filtersForm.classList.toggle('is-collapsed', collapsed);
@@ -1061,12 +1124,22 @@ CARD_TEMPLATE = """
 
   if (filtersForm) {
     filtersForm.addEventListener('submit', () => {
+      if (favoritesOnlySelect && favoritesOnlySelect.value === '1' && weekdaySelect && weekdaySelect.value === defaultWeekday) {
+        weekdaySelect.value = '';
+      }
       const payload = {};
       Array.from(new FormData(filtersForm).entries()).forEach(([key, value]) => {
         if (key === 'view') return;
         payload[key] = String(value || '').trim();
       });
       setCookie(filtersCookieName, JSON.stringify(payload), 365);
+    });
+  }
+  if (favoritesOnlySelect && weekdaySelect) {
+    favoritesOnlySelect.addEventListener('change', () => {
+      if (favoritesOnlySelect.value === '1' && weekdaySelect.value === defaultWeekday) {
+        weekdaySelect.value = '';
+      }
     });
   }
   if (clearFiltersLink) {
@@ -1439,12 +1512,67 @@ def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, ob
         clean_row: dict[str, object] = {}
         for key, value in row.items():
             clean_row[key] = clean_display_value(value)
+        clean_row["meeting_name_display"] = build_meeting_name_display(clean_row)
         zoom_url = normalize_space(clean_row.get("zoom_url"))
         if zoom_url and not re.match(r"^https?://", zoom_url, re.I):
             clean_row["zoom_url"] = None
         clean_row["summary_display"] = build_summary_display(clean_row)
         sanitized_rows.append(clean_row)
     return sanitized_rows
+
+
+def extract_place_name(value: object | None) -> str | None:
+    text = normalize_space(value)
+    if not text:
+        return None
+    if text.casefold() == "zoom":
+        return "Zoom"
+    first_part = text.split(",")[0].strip()
+    tokens = first_part.split()
+    if not tokens:
+        return None
+    stop_suffixes = (
+        "gata",
+        "götu",
+        "vegur",
+        "vegi",
+        "veg",
+        "stígur",
+        "stíg",
+        "stigur",
+        "braut",
+        "brautar",
+        "torg",
+        "hús",
+        "hus",
+    )
+    collected: list[str] = []
+    for token in tokens:
+        lowered = token.casefold()
+        if any(char.isdigit() for char in lowered):
+            break
+        if lowered.endswith(stop_suffixes):
+            break
+        collected.append(token)
+    if collected:
+        return " ".join(collected)
+    return tokens[0]
+
+
+def build_meeting_name_display(row: dict[str, object]) -> str:
+    meeting_name = normalize_space(row.get("meeting_name"))
+    if meeting_name:
+        return meeting_name
+    for candidate in [
+        row.get("canonical_location_text"),
+        row.get("location_text"),
+        row.get("venue_text"),
+        row.get("location_nickname"),
+    ]:
+        place_name = extract_place_name(candidate)
+        if place_name:
+            return place_name
+    return "Ónefndur fundur"
 
 
 def build_summary_display(row: dict[str, object]) -> str:
@@ -2304,14 +2432,12 @@ def request_filters() -> dict[str, str]:
     def resolve_filter_value(name: str) -> str:
         if name in request.args:
             return request.args.get(name, "").strip()
-        if name == "weekday":
-            return default_weekday
         if isinstance(saved_filters, dict):
             if name in saved_filters:
                 return normalize_space(saved_filters.get(name))
         return ""
 
-    return {
+    filters = {
         "view": request.args.get("view", "week").strip() or "week",
         "weekday": resolve_filter_value("weekday"),
         "fellowship": resolve_filter_value("fellowship"),
@@ -2325,25 +2451,27 @@ def request_filters() -> dict[str, str]:
         "time_to": resolve_filter_value("time_to"),
         "favorites_only": "1" if resolve_filter_value("favorites_only") in {"1", "true", "on", "yes"} else "",
     }
+    non_view_filters = {key: value for key, value in filters.items() if key != "view" and value}
+    if not non_view_filters:
+        filters["weekday"] = default_weekday
+    return filters
 
 
 def build_filter_options(df: pd.DataFrame) -> dict[str, list[str] | list[dict[str, str]]]:
-    nickname_rows = (
-        df.loc[df["location_nickname"].fillna("").str.strip() != "", ["canonical_location_text", "location_nickname"]]
-        .drop_duplicates()
-        .sort_values(["location_nickname", "canonical_location_text"], kind="stable")
-    )
-    nickname_locations = [
+    nickname_values = sorted(
         {
-            "value": str(row["canonical_location_text"]),
-            "label": (
-                str(row["location_nickname"])
-                if str(row["location_nickname"]) == str(row["canonical_location_text"])
-                else f'{row["location_nickname"]} ({row["canonical_location_text"]})'
-            ),
-        }
-        for _, row in nickname_rows.iterrows()
-    ]
+            normalize_space(value)
+            for value in df["location_nickname"].fillna("").tolist()
+            if normalize_space(value)
+        },
+        key=lambda value: value.casefold(),
+    )
+    nickname_locations = [{"value": "__zoom__", "label": "Zoom"}]
+    nickname_locations.extend(
+        {"value": value, "label": value}
+        for value in nickname_values
+        if value.casefold() != "zoom"
+    )
 
     return {
         "weekday_is": [day for day, _ in AA_DAY_PAGES],
@@ -2721,7 +2849,18 @@ def build_app(db_path: Path) -> Flask:
         for filter_name, column in exact_map.items():
             value = filters[filter_name]
             if value:
-                df = df[df[column].fillna("") == value]
+                if filter_name == "canonical_location":
+                    if value == "__zoom__":
+                        df = df[df["format"].fillna("") == "Fjarfundur"]
+                    else:
+                        mask = (
+                            df["location_nickname"].fillna("").astype(str) == value
+                        ) | (
+                            df[column].fillna("").astype(str) == value
+                        )
+                        df = df[mask]
+                else:
+                    df = df[df[column].fillna("") == value]
 
         if not filters["include_church"]:
             df = df[df["source"].fillna("") != "kirkja"]
@@ -2788,6 +2927,14 @@ def build_app(db_path: Path) -> Flask:
         location_rows = build_location_review_rows(filtered, "")
         location_clusters = build_location_clusters(location_rows)
         manual_events = load_manual_events(db_path)
+        mapped_location_rows = [
+            row for row in location_rows if int(row.get("has_location_mapping", 0)) or normalize_space(row.get("location_nickname"))
+        ]
+        edit_event_id = request.args.get("edit_event_id", "").strip()
+        church_edit_event = next(
+            (item for item in manual_events if str(item.get("event_id")) == edit_event_id),
+            None,
+        ) if edit_event_id else None
         return Response(
             app.jinja_env.from_string(CARD_TEMPLATE).render(
                 rows=row_dicts,
@@ -2805,11 +2952,14 @@ def build_app(db_path: Path) -> Flask:
                 week_query_string=week_query_string,
                 locations_query_string=locations_query_string,
                 church_query_string=church_query_string,
+                default_weekday=current_iceland_weekday(),
                 filters_cookie_name=FILTERS_COOKIE_NAME,
                 favorites_cookie_name=FAVORITES_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
+                mapped_location_rows=mapped_location_rows,
                 manual_events=manual_events,
+                church_edit_event=church_edit_event,
             ),
             mimetype="text/html",
         )
