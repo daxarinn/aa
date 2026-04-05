@@ -942,10 +942,15 @@ def make_session() -> requests.Session:
     return session
 
 
-def normalize_space(value: str | None) -> str:
-    if not value:
+def normalize_space(value: object | None) -> str:
+    if value is None:
         return ""
-    return re.sub(r"\s+", " ", value.replace("\xa0", " ")).strip()
+    if pd.isna(value):
+        return ""
+    text = value if isinstance(value, str) else str(value)
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
 
 
 def truncate_text(value: str | None, max_length: int = 180) -> str | None:
@@ -1901,14 +1906,18 @@ def build_week_view(rows: list[dict[str, str | None]], week_days: list[str]) -> 
     slots: dict[tuple[int, str], dict[str, object]] = {}
 
     for row in rows:
-        start_time = row.get("start_time") or ""
-        time_display = row.get("time_display") or "Ótímasett"
+        weekday_is = normalize_space(row.get("weekday_is"))
+        if weekday_is not in week_days:
+            continue
+
+        start_time = normalize_space(row.get("start_time"))
+        time_display = normalize_space(row.get("time_display")) or "Ótímasett"
         if start_time:
             slot_key = (0, start_time)
             time_label = start_time
         else:
-            slot_key = (1, str(time_display))
-            time_label = str(time_display)
+            slot_key = (1, time_display)
+            time_label = time_display
 
         if slot_key not in slots:
             slots[slot_key] = {
@@ -1916,7 +1925,7 @@ def build_week_view(rows: list[dict[str, str | None]], week_days: list[str]) -> 
                 "cells": {day: [] for day in week_days},
             }
 
-        slots[slot_key]["cells"][str(row["weekday_is"])].append(row)
+        slots[slot_key]["cells"][weekday_is].append(row)
 
     ordered_slots: list[dict[str, object]] = []
     for slot_key in sorted(slots.keys(), key=lambda item: item):
