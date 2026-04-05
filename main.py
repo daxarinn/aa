@@ -106,6 +106,23 @@ CREATE TABLE IF NOT EXISTS location_metadata (
     nickname TEXT,
     updated_at_utc TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS manual_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    weekday_is TEXT NOT NULL,
+    weekday_order INTEGER NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    time_display TEXT NOT NULL,
+    subtitle TEXT,
+    location_text TEXT,
+    venue_text TEXT,
+    notes TEXT,
+    source_page_url TEXT,
+    updated_at_utc TEXT NOT NULL
+);
 """
 
 
@@ -629,6 +646,13 @@ CARD_TEMPLATE = """
           </select>
         </div>
         <div class="filter-field">
+          <label for="include_church">Kirkjusamkomur</label>
+          <select id="include_church" name="include_church">
+            <option value="">Fela</option>
+            <option value="1" {% if filters["include_church"] == "1" %}selected{% endif %}>Sýna með fundum</option>
+          </select>
+        </div>
+        <div class="filter-field">
           <label for="time_from">Frá tíma</label>
           <input id="time_from" type="time" name="time_from" value="{{ filters["time_from"] }}">
         </div>
@@ -652,13 +676,10 @@ CARD_TEMPLATE = """
         <a href="/?{{ list_query_string }}" class="{% if filters["view"] != "week" %}active{% endif %}">Línuleg sýn</a>
         <a href="/?{{ week_query_string }}" class="{% if filters["view"] == "week" %}active{% endif %}">Vikusýn</a>
         <a href="/?{{ locations_query_string }}" class="{% if filters["view"] == "locations" %}active{% endif %}">Staðamöppun</a>
+        <a href="/?{{ church_query_string }}" class="{% if filters["view"] == "church" %}active{% endif %}">Kirkjuskráning</a>
       </div>
     </section>
-    {% if total_count == 0 %}
-    <section class="empty-state">
-      Engir fundir pössuðu við valdar síur.
-    </section>
-    {% elif filters["view"] == "locations" %}
+    {% if filters["view"] == "locations" %}
     <section class="mapping-section">
       <article class="mapping-card">
         <h3>Tillögur að samruna</h3>
@@ -758,6 +779,107 @@ CARD_TEMPLATE = """
           </tbody>
         </table>
       </article>
+    </section>
+    {% elif filters["view"] == "church" %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Ný kirkjusamkoma</h3>
+        <p class="mapping-meta">Handfærðar samkomur sem hægt er að kveikja á í venjulegu fundayfirliti með filter.</p>
+        <form class="filters" method="post" action="/church/save">
+          <input type="hidden" name="redirect_query" value="{{ church_query_string }}">
+          <div class="filter-field">
+            <label for="church_title">Heiti</label>
+            <input id="church_title" type="text" name="title" placeholder="Messa, samvera...">
+          </div>
+          <div class="filter-field">
+            <label for="church_weekday">Vikudagur</label>
+            <select id="church_weekday" name="weekday_is">
+              {% for value in options["weekday_is"] %}
+              <option value="{{ value }}">{{ value }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="church_start_time">Frá tími</label>
+            <input id="church_start_time" type="time" name="start_time">
+          </div>
+          <div class="filter-field">
+            <label for="church_end_time">Til tíma</label>
+            <input id="church_end_time" type="time" name="end_time">
+          </div>
+          <div class="filter-field">
+            <label for="church_subtitle">Undirlína</label>
+            <input id="church_subtitle" type="text" name="subtitle" placeholder="Prestur, efni...">
+          </div>
+          <div class="filter-field">
+            <label for="church_location_text">Staðsetning</label>
+            <input id="church_location_text" type="text" name="location_text" placeholder="Reykjavík...">
+          </div>
+          <div class="filter-field">
+            <label for="church_venue_text">Staður</label>
+            <input id="church_venue_text" type="text" name="venue_text" placeholder="Hallgrímskirkja...">
+          </div>
+          <div class="filter-field">
+            <label for="church_notes">Glósur</label>
+            <input id="church_notes" type="text" name="notes" placeholder="Sálmar, kaffi...">
+          </div>
+          <div class="filter-field">
+            <label for="church_source_page_url">Slóð</label>
+            <input id="church_source_page_url" type="url" name="source_page_url" placeholder="https://...">
+          </div>
+          <div class="filter-actions">
+            <button type="submit">Vista kirkjusamkomu</button>
+          </div>
+        </form>
+      </article>
+      <article class="mapping-card">
+        <h3>Skráðar kirkjusamkomur</h3>
+        {% if manual_events %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Heiti</th>
+              <th>Tími</th>
+              <th>Staður</th>
+              <th>Glósur</th>
+              <th>Aðgerð</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in manual_events %}
+            <tr>
+              <td>
+                {{ item["title"] }}
+                {% if item["subtitle"] %}<div class="mapping-meta">{{ item["subtitle"] }}</div>{% endif %}
+              </td>
+              <td>{{ item["weekday_is"] }} {{ item["time_display"] }}</td>
+              <td>
+                {% if item["venue_text"] %}{{ item["venue_text"] }}{% endif %}
+                {% if item["location_text"] %}<div class="mapping-meta">{{ item["location_text"] }}</div>{% endif %}
+              </td>
+              <td class="mapping-meta">
+                {% if item["notes"] %}{{ item["notes"] }}{% endif %}
+                {% if item["source_page_url"] %}<br><a href="{{ item["source_page_url"] }}" target="_blank" rel="noreferrer">Slóð</a>{% endif %}
+              </td>
+              <td>
+                <form method="post" action="/church/delete">
+                  <input type="hidden" name="event_id" value="{{ item["event_id"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ church_query_string }}">
+                  <button type="submit">Eyða</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engar kirkjusamkomur hafa verið skráðar enn.</p>
+        {% endif %}
+      </article>
+    </section>
+    {% elif total_count == 0 %}
+    <section class="empty-state">
+      Engir fundir pössuðu við valdar síur.
     </section>
     {% elif filters["view"] == "week" %}
     <section class="week-shell" data-scroll-restore="week-shell">
@@ -1991,39 +2113,101 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(
             """
+            WITH unified AS (
+                SELECT
+                    m.source_uid,
+                    m.source,
+                    m.weekday_is,
+                    m.weekday_order,
+                    m.start_time,
+                    m.end_time,
+                    m.time_display,
+                    m.meeting_name,
+                    m.subtitle,
+                    m.fellowship,
+                    m.format,
+                    m.location_text,
+                    m.venue_text,
+                    m.zoom_meeting_id,
+                    m.zoom_passcode,
+                    m.zoom_url,
+                    m.gender_restriction,
+                    m.access_restriction,
+                    m.recurrence_hint,
+                    m.notes,
+                    m.source_record_id,
+                    m.source_page_url,
+                    m.raw_json,
+                    m.scraped_at_utc
+                FROM meetings m
+                UNION ALL
+                SELECT
+                    'manual:' || me.event_id AS source_uid,
+                    'kirkja' AS source,
+                    me.weekday_is,
+                    me.weekday_order,
+                    me.start_time,
+                    me.end_time,
+                    me.time_display,
+                    me.title AS meeting_name,
+                    me.subtitle,
+                    'Kirkja' AS fellowship,
+                    'Staðfundur' AS format,
+                    me.location_text,
+                    me.venue_text,
+                    NULL AS zoom_meeting_id,
+                    NULL AS zoom_passcode,
+                    NULL AS zoom_url,
+                    NULL AS gender_restriction,
+                    NULL AS access_restriction,
+                    NULL AS recurrence_hint,
+                    me.notes,
+                    'manual:' || me.event_id AS source_record_id,
+                    COALESCE(me.source_page_url, '') AS source_page_url,
+                    json_object(
+                        'event_kind', me.event_kind,
+                        'title', me.title,
+                        'subtitle', me.subtitle,
+                        'location_text', me.location_text,
+                        'venue_text', me.venue_text,
+                        'notes', me.notes
+                    ) AS raw_json,
+                    me.updated_at_utc AS scraped_at_utc
+                FROM manual_events me
+            )
             SELECT
-                m.source_uid,
-                m.source,
-                m.weekday_is,
-                m.weekday_order,
-                m.start_time,
-                m.end_time,
-                m.time_display,
-                m.meeting_name,
-                m.subtitle,
-                m.fellowship,
-                m.format,
-                m.location_text,
-                COALESCE(la.canonical_location_text, m.location_text) AS canonical_location_text,
+                u.source_uid,
+                u.source,
+                u.weekday_is,
+                u.weekday_order,
+                u.start_time,
+                u.end_time,
+                u.time_display,
+                u.meeting_name,
+                u.subtitle,
+                u.fellowship,
+                u.format,
+                u.location_text,
+                COALESCE(la.canonical_location_text, u.location_text) AS canonical_location_text,
                 lm.nickname AS location_nickname,
                 CASE WHEN la.alias_location_text IS NULL THEN 0 ELSE 1 END AS has_location_mapping,
-                m.venue_text,
-                m.zoom_meeting_id,
-                m.zoom_passcode,
-                m.zoom_url,
-                m.gender_restriction,
-                m.access_restriction,
-                m.recurrence_hint,
-                m.notes,
-                m.source_record_id,
-                m.source_page_url,
-                m.raw_json,
-                m.scraped_at_utc
-            FROM meetings m
+                u.venue_text,
+                u.zoom_meeting_id,
+                u.zoom_passcode,
+                u.zoom_url,
+                u.gender_restriction,
+                u.access_restriction,
+                u.recurrence_hint,
+                u.notes,
+                u.source_record_id,
+                u.source_page_url,
+                u.raw_json,
+                u.scraped_at_utc
+            FROM unified u
             LEFT JOIN location_aliases la
-                ON la.alias_location_text = m.location_text
+                ON la.alias_location_text = u.location_text
             LEFT JOIN location_metadata lm
-                ON lm.canonical_location_text = COALESCE(la.canonical_location_text, m.location_text)
+                ON lm.canonical_location_text = COALESCE(la.canonical_location_text, u.location_text)
             ORDER BY weekday_order, start_time, time_display, source, meeting_name
             """,
             conn,
@@ -2136,6 +2320,7 @@ def request_filters() -> dict[str, str]:
         "access_restriction": resolve_filter_value("access_restriction"),
         "canonical_location": resolve_filter_value("canonical_location"),
         "region": resolve_filter_value("region"),
+        "include_church": "1" if resolve_filter_value("include_church") in {"1", "true", "on", "yes"} else "",
         "time_from": resolve_filter_value("time_from"),
         "time_to": resolve_filter_value("time_to"),
         "favorites_only": "1" if resolve_filter_value("favorites_only") in {"1", "true", "on", "yes"} else "",
@@ -2251,6 +2436,111 @@ def save_location_nickname(db_path: Path, canonical_location_text: str, nickname
                 (canonical, nickname_value, datetime.now(timezone.utc).replace(microsecond=0).isoformat()),
             )
         conn.commit()
+
+
+def save_manual_event(
+    db_path: Path,
+    *,
+    event_id: str | None,
+    event_kind: str,
+    title: str,
+    weekday_is: str,
+    start_time: str,
+    end_time: str,
+    subtitle: str,
+    location_text: str,
+    venue_text: str,
+    notes: str,
+    source_page_url: str,
+) -> None:
+    ensure_schema(db_path)
+    clean_kind = normalize_space(event_kind) or "church"
+    clean_title = normalize_space(title)
+    clean_weekday = normalize_space(weekday_is)
+    if not clean_title or clean_weekday not in WEEKDAY_ORDER:
+        return
+
+    padded_start = pad_time(start_time)
+    padded_end = pad_time(end_time)
+    time_display = padded_start or "Ótímasett"
+    if padded_start and padded_end:
+        time_display = f"{padded_start}-{padded_end}"
+
+    payload = (
+        clean_kind,
+        clean_title,
+        clean_weekday,
+        WEEKDAY_ORDER[clean_weekday],
+        padded_start,
+        padded_end,
+        time_display,
+        normalize_space(subtitle) or None,
+        normalize_space(location_text) or None,
+        normalize_space(venue_text) or None,
+        normalize_space(notes) or None,
+        normalize_space(source_page_url) or None,
+        datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        if event_id and str(event_id).strip().isdigit():
+            conn.execute(
+                """
+                UPDATE manual_events
+                SET event_kind = ?, title = ?, weekday_is = ?, weekday_order = ?, start_time = ?, end_time = ?,
+                    time_display = ?, subtitle = ?, location_text = ?, venue_text = ?, notes = ?, source_page_url = ?, updated_at_utc = ?
+                WHERE event_id = ?
+                """,
+                payload + (int(event_id),),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO manual_events (
+                    event_kind, title, weekday_is, weekday_order, start_time, end_time, time_display,
+                    subtitle, location_text, venue_text, notes, source_page_url, updated_at_utc
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                payload,
+            )
+        conn.commit()
+
+
+def delete_manual_event(db_path: Path, event_id: str | None) -> None:
+    ensure_schema(db_path)
+    if not event_id or not str(event_id).strip().isdigit():
+        return
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM manual_events WHERE event_id = ?", (int(event_id),))
+        conn.commit()
+
+
+def load_manual_events(db_path: Path) -> list[dict[str, object]]:
+    ensure_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                event_id,
+                event_kind,
+                title,
+                weekday_is,
+                start_time,
+                end_time,
+                time_display,
+                subtitle,
+                location_text,
+                venue_text,
+                notes,
+                source_page_url,
+                updated_at_utc
+            FROM manual_events
+            ORDER BY weekday_order, start_time, time_display, title
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def build_location_review_rows(df: pd.DataFrame, query: str) -> list[dict[str, object]]:
@@ -2433,6 +2723,9 @@ def build_app(db_path: Path) -> Flask:
             if value:
                 df = df[df[column].fillna("") == value]
 
+        if not filters["include_church"]:
+            df = df[df["source"].fillna("") != "kirkja"]
+
         if filters["gender_restriction"]:
             gender_filter_map = {
                 "Blandaður": {"Blandaður"},
@@ -2491,8 +2784,10 @@ def build_app(db_path: Path) -> Flask:
         list_query_string = build_query_string(filters, overrides={"view": "list"})
         week_query_string = build_query_string(filters, overrides={"view": "week"})
         locations_query_string = build_query_string(filters, overrides={"view": "locations"})
+        church_query_string = build_query_string(filters, overrides={"view": "church"})
         location_rows = build_location_review_rows(filtered, "")
         location_clusters = build_location_clusters(location_rows)
+        manual_events = load_manual_events(db_path)
         return Response(
             app.jinja_env.from_string(CARD_TEMPLATE).render(
                 rows=row_dicts,
@@ -2509,10 +2804,12 @@ def build_app(db_path: Path) -> Flask:
                 list_query_string=list_query_string,
                 week_query_string=week_query_string,
                 locations_query_string=locations_query_string,
+                church_query_string=church_query_string,
                 filters_cookie_name=FILTERS_COOKIE_NAME,
                 favorites_cookie_name=FAVORITES_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
+                manual_events=manual_events,
             ),
             mimetype="text/html",
         )
@@ -2553,6 +2850,33 @@ def build_app(db_path: Path) -> Flask:
         if canonical_location_text:
             save_location_nickname(db_path, canonical_location_text, nickname)
         target = "/" + (f"?{redirect_query}" if redirect_query else "?view=locations")
+        return redirect(target)
+
+    @app.post("/church/save")
+    def church_save():
+        save_manual_event(
+            db_path,
+            event_id=request.form.get("event_id"),
+            event_kind="church",
+            title=request.form.get("title", ""),
+            weekday_is=request.form.get("weekday_is", ""),
+            start_time=request.form.get("start_time", ""),
+            end_time=request.form.get("end_time", ""),
+            subtitle=request.form.get("subtitle", ""),
+            location_text=request.form.get("location_text", ""),
+            venue_text=request.form.get("venue_text", ""),
+            notes=request.form.get("notes", ""),
+            source_page_url=request.form.get("source_page_url", ""),
+        )
+        redirect_query = request.form.get("redirect_query", "").strip()
+        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=church")
+        return redirect(target)
+
+    @app.post("/church/delete")
+    def church_delete():
+        delete_manual_event(db_path, request.form.get("event_id"))
+        redirect_query = request.form.get("redirect_query", "").strip()
+        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=church")
         return redirect(target)
 
     return app
