@@ -73,26 +73,26 @@ git push -u origin main
 
 Forsendur:
 
-- app fer í `/srv/aa/app`
-- backups fara í `/srv/aa/backups`
+- app fer í `/var/www/aa`
+- backups fara í `/var/www/backups/aa`
 - nginx er nú þegar uppsett
 
 Sem `root` eða með `sudo`:
 
 ```bash
-adduser --system --group --home /srv/aa aa
-mkdir -p /srv/aa
-chown -R aa:www-data /srv/aa
+mkdir -p /var/www/aa
+mkdir -p /var/www/database/aa
+mkdir -p /var/www/backups/aa
 ```
 
 ## 6. Clone og Python environment á VPS
 
-Sem `aa` notandi:
+Sem `dax` notandi:
 
 ```bash
-cd /srv/aa
-git clone git@github-aa:USERNAME_OR_ORG/aa.git app
-cd app
+cd /var/www
+git clone git@github-aa:USERNAME_OR_ORG/aa.git aa
+cd aa
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -U pip
@@ -152,7 +152,7 @@ sudo systemctl reload nginx
 Þegar ný útgáfa fer á server:
 
 ```bash
-cd /srv/aa/app
+cd /var/www/aa
 git pull
 . .venv/bin/activate
 pip install -r requirements.txt

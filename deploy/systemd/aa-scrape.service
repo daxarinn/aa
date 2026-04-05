@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=aa
-Group=www-data
-WorkingDirectory=/srv/aa/app
-EnvironmentFile=/srv/aa/app/deploy/aa.env
-ExecStart=/srv/aa/app/.venv/bin/python scripts/scrape_and_backup.py
+User=flaskuser
+Group=flaskuser
+WorkingDirectory=/var/www/aa
+EnvironmentFile=/var/www/aa/deploy/aa.env
+ExecStart=/var/www/aa/.venv/bin/python /var/www/aa/scripts/scrape_and_backup.py
 StandardOutput=journal
 StandardError=journal
