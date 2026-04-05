@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode
 import socket
 from zoneinfo import ZoneInfo
 
@@ -1563,6 +1563,9 @@ def build_meeting_name_display(row: dict[str, object]) -> str:
     meeting_name = normalize_space(row.get("meeting_name"))
     if meeting_name:
         return meeting_name
+    fellowship_name = normalize_space(row.get("fellowship_display"))
+    if fellowship_name and fellowship_name != "Óskráð félag":
+        return f"{fellowship_name} fundur"
     for candidate in [
         row.get("canonical_location_text"),
         row.get("location_text"),
@@ -2419,7 +2422,7 @@ def read_json_cookie(name: str) -> dict[str, object] | list[object] | None:
     if not raw_value:
         return None
     try:
-        return json.loads(raw_value)
+        return json.loads(unquote(raw_value))
     except json.JSONDecodeError:
         return None
 
