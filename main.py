@@ -1029,6 +1029,7 @@ CARD_TEMPLATE = """
   const filtersCookieName = "{{ filters_cookie_name }}";
   const favoritesCookieName = "{{ favorites_cookie_name }}";
   const filtersCollapsedKey = "aa-filters-collapsed";
+  const defaultWeekday = "{{ default_weekday }}";
   const maxFavorites = 200;
 
   const getCookie = (name) => {
@@ -1124,7 +1125,11 @@ CARD_TEMPLATE = """
       const payload = {};
       Array.from(new FormData(filtersForm).entries()).forEach(([key, value]) => {
         if (key === 'view') return;
-        payload[key] = String(value || '').trim();
+        const normalizedValue = String(value || '').trim();
+        if (key === 'weekday' && (!normalizedValue || normalizedValue === defaultWeekday)) {
+          return;
+        }
+        payload[key] = normalizedValue;
       });
       setCookie(filtersCookieName, JSON.stringify(payload), 365);
     });
@@ -1565,11 +1570,44 @@ def build_meeting_name_display(row: dict[str, object]) -> str:
     return "Ónefndur fundur"
 
 
+def build_venue_summary(value: object | None) -> str | None:
+    text = clean_display_value(value)
+    if not text:
+        return None
+    first_part = normalize_space(text.split(",")[0])
+    if not first_part:
+        return None
+    if first_part.casefold().startswith(
+        (
+            "gengið inn",
+            "gengid inn",
+            "inngangur",
+            "vinstri hlið",
+            "vinstri hlid",
+            "hægra megin",
+            "haegra megin",
+            "norðanmegin",
+            "nordanmegin",
+            "sunnanmegin",
+            "austanmegin",
+            "vestanmegin",
+            "2. hæð",
+            "2. haed",
+            "1. hæð",
+            "1. haed",
+        )
+    ):
+        return None
+    return first_part
+
+
 def build_summary_display(row: dict[str, object]) -> str:
     candidates = [
         clean_display_value(row.get("location_nickname")),
-        clean_display_value(row.get("venue_text")),
+        extract_place_name(row.get("canonical_location_text")),
+        extract_place_name(row.get("location_text")),
         clean_display_value(row.get("location_text")),
+        build_venue_summary(row.get("venue_text")),
         clean_display_value(row.get("subtitle")),
         clean_display_value(row.get("fellowship_display")),
     ]
@@ -2424,7 +2462,10 @@ def request_filters() -> dict[str, str]:
             return request.args.get(name, "").strip()
         if isinstance(saved_filters, dict):
             if name in saved_filters:
-                return normalize_space(saved_filters.get(name))
+                value = normalize_space(saved_filters.get(name))
+                if name == "weekday" and not value:
+                    return default_weekday
+                return value
         if name == "weekday":
             return default_weekday
         return ""
