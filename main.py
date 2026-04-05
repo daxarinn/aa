@@ -56,6 +56,8 @@ WEEKDAY_ORDER = {
 
 DEFAULT_DB_PATH = Path("data/meetings.sqlite")
 DEFAULT_CSV_PATH = Path("exports/meetings_latest.csv")
+FILTERS_COOKIE_NAME = "aa_filters"
+FAVORITES_COOKIE_NAME = "aa_favorites"
 
 
 SCHEMA_SQL = """
@@ -132,12 +134,12 @@ CARD_TEMPLATE = """
         radial-gradient(circle at top left, #fff7d6 0, transparent 30%),
         linear-gradient(180deg, #f3eee4 0%, #f7f4ee 100%);
     }
-    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 14px 28px; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 12px 10px 18px; }
     .hero {
       background: rgba(255,255,255,0.75);
       border: 1px solid var(--border);
       border-radius: 18px;
-      padding: 18px;
+      padding: 12px;
       backdrop-filter: blur(8px);
       box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
     }
@@ -146,13 +148,13 @@ CARD_TEMPLATE = """
     .filters {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 10px;
-      margin-top: 14px;
+      gap: 8px;
+      margin-top: 10px;
     }
     .filter-field {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
     .filter-field label {
       font-size: 0.82rem;
@@ -162,7 +164,7 @@ CARD_TEMPLATE = """
       width: 100%;
       border-radius: 12px;
       border: 1px solid var(--border);
-      padding: 10px 12px;
+      padding: 8px 10px;
       font: inherit;
       text-decoration: none;
       color: inherit;
@@ -173,13 +175,28 @@ CARD_TEMPLATE = """
     .filter-actions {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 10px;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .filter-panel-header {
       margin-top: 10px;
+    }
+    .filter-toggle {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 7px 11px;
+      font: inherit;
+      background: white;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .filters.is-collapsed {
+      display: none;
     }
     .view-switch {
       display: inline-flex;
-      gap: 8px;
-      margin-top: 14px;
+      gap: 6px;
+      margin-top: 10px;
       flex-wrap: wrap;
     }
     .view-switch a {
@@ -187,7 +204,7 @@ CARD_TEMPLATE = """
       border: 1px solid var(--border);
       color: var(--ink);
       background: white;
-      padding: 8px 12px;
+      padding: 7px 10px;
       border-radius: 999px;
       font-size: 0.92rem;
     }
@@ -196,21 +213,28 @@ CARD_TEMPLATE = """
       color: white;
       border-color: var(--accent);
     }
-    .summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .summary span {
-      padding: 7px 10px;
+      padding: 5px 8px;
       border-radius: 999px;
       background: var(--pill);
       color: #0f172a;
       font-size: 0.9rem;
     }
-    .grid { display: grid; gap: 12px; margin-top: 16px; }
+    .grid { display: grid; gap: 8px; margin-top: 12px; }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 18px;
-      padding: 15px;
+      padding: 11px;
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+      position: relative;
+    }
+    .card.is-favorite,
+    .slot-card.is-favorite {
+      outline: 2px solid #d49f24;
+      outline-offset: 1px;
+      box-shadow: inset 0 0 0 1px rgba(212, 159, 36, 0.18), 0 12px 28px rgba(15, 23, 42, 0.05);
     }
     .card.is-remote,
     .slot-card.is-remote {
@@ -242,18 +266,18 @@ CARD_TEMPLATE = """
       border-color: #8fb2de;
       box-shadow: inset 2px 0 0 #2f72c8, 0 12px 28px rgba(15, 23, 42, 0.05);
     }
-    .topline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .topline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
     .time { font-weight: 700; font-size: 1.05rem; color: var(--accent); }
     .pill {
       font-size: 0.82rem;
       color: #0f172a;
       background: #eef6f5;
       border: 1px solid #d7ebe7;
-      padding: 5px 8px;
+      padding: 4px 7px;
       border-radius: 999px;
     }
     h2 { margin: 0 0 6px; font-size: 1.2rem; }
-    .line { margin: 4px 0; color: var(--muted); font-size: 0.96rem; }
+    .line { margin: 3px 0; color: var(--muted); font-size: 0.93rem; }
     .line strong { color: var(--ink); }
     .zoom { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 0.92rem; }
     .zoom a { color: var(--accent); }
@@ -269,7 +293,7 @@ CARD_TEMPLATE = """
       color: var(--accent);
     }
     .empty-state {
-      margin-top: 16px;
+      margin-top: 12px;
       background: rgba(255,255,255,0.7);
       border: 1px solid var(--border);
       border-radius: 18px;
@@ -280,12 +304,12 @@ CARD_TEMPLATE = """
       margin-top: 16px;
       overflow-x: auto;
       border: 1px solid var(--border);
-      border-radius: 20px;
+      border-radius: 16px;
       background: rgba(255,255,255,0.55);
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
     }
     .week-board {
-      min-width: 980px;
+      min-width: 920px;
       display: grid;
       grid-template-columns: 88px repeat(7, minmax(120px, 1fr));
       position: relative;
@@ -300,12 +324,12 @@ CARD_TEMPLATE = """
       z-index: 2;
       background: #f8f5ee;
       border-bottom: 1px solid var(--border);
-      padding: 12px 10px;
+      padding: 9px 8px;
       font-size: 0.88rem;
       font-weight: 700;
     }
     .time-cell {
-      padding: 12px 10px;
+      padding: 9px 8px;
       border-right: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
       color: var(--accent);
@@ -314,23 +338,49 @@ CARD_TEMPLATE = """
       background: rgba(248,245,238,0.75);
     }
     .week-cell {
-      min-height: 92px;
-      padding: 8px;
+      min-height: 80px;
+      padding: 6px;
       border-bottom: 1px solid var(--border);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     .slot-card {
       background: white;
       border: 1px solid #e7e0d2;
       border-radius: 14px;
-      padding: 8px 10px;
+      padding: 7px 32px 7px 8px;
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
       position: relative;
       cursor: pointer;
       outline: none;
+    }
+    .favorite-toggle {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid #d8d2c6;
+      background: rgba(255,255,255,0.92);
+      color: #8a7f68;
+      font-size: 0.95rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 3;
+    }
+    .favorite-toggle.is-active {
+      color: #9c6b00;
+      background: #fff2bf;
+      border-color: #d4a43d;
+    }
+    .favorite-toggle:hover {
+      border-color: #c8b27d;
     }
     .slot-title {
       margin: 0;
@@ -355,6 +405,12 @@ CARD_TEMPLATE = """
       font-size: 0.82rem;
       line-height: 1.35;
     }
+    .slot-tooltip-title {
+      margin: 0 0 6px;
+      font-size: 0.95rem;
+      line-height: 1.25;
+      color: var(--ink);
+    }
     .slot-tooltip-pills {
       display: flex;
       flex-wrap: wrap;
@@ -370,7 +426,7 @@ CARD_TEMPLATE = """
     }
     .slot-link {
       display: inline-block;
-      margin-top: 6px;
+      margin-top: 4px;
       color: var(--accent);
       font-size: 0.82rem;
       text-decoration: none;
@@ -386,7 +442,7 @@ CARD_TEMPLATE = """
       position: absolute;
       left: 10px;
       top: calc(100% + 8px);
-      width: min(290px, calc(100vw - 48px));
+      width: min(280px, calc(100vw - 18px));
       background: rgba(255,255,255,0.98);
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -397,7 +453,8 @@ CARD_TEMPLATE = """
     }
     .slot-card:hover .slot-tooltip,
     .slot-card:focus .slot-tooltip,
-    .slot-card:focus-within .slot-tooltip {
+    .slot-card:focus-within .slot-tooltip,
+    .slot-card.is-open .slot-tooltip {
       display: block;
     }
     .slot-tooltip::before {
@@ -496,7 +553,10 @@ CARD_TEMPLATE = """
     <section class="hero">
       <h1>AA fundaskrá snapshot</h1>
       <p class="meta">Fundir af aa.is og fjarfundir.org. Síðast sótt: {{ scraped_at }}</p>
-      <form class="filters" method="get">
+      <div class="filter-panel-header">
+        <button type="button" class="filter-toggle" id="filterToggle" aria-expanded="false">Sýna síur</button>
+      </div>
+      <form class="filters" method="get" id="filtersForm">
         <input type="hidden" name="view" value="{{ filters["view"] }}">
         <div class="filter-field">
           <label for="weekday">Vikudagur</label>
@@ -553,6 +613,22 @@ CARD_TEMPLATE = """
           </select>
         </div>
         <div class="filter-field">
+          <label for="region">Svæði</label>
+          <select id="region" name="region">
+            <option value="">Allt landið</option>
+            {% for item in options["region_options"] %}
+            <option value="{{ item["value"] }}" {% if filters["region"] == item["value"] %}selected{% endif %}>{{ item["label"] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="favorites_only">Uppáhaldsfundir</label>
+          <select id="favorites_only" name="favorites_only">
+            <option value="">Sýna alla</option>
+            <option value="1" {% if filters["favorites_only"] == "1" %}selected{% endif %}>Bara uppáhalds</option>
+          </select>
+        </div>
+        <div class="filter-field">
           <label for="time_from">Frá tíma</label>
           <input id="time_from" type="time" name="time_from" value="{{ filters["time_from"] }}">
         </div>
@@ -563,7 +639,7 @@ CARD_TEMPLATE = """
         <div class="filter-actions">
           <button type="submit">Sía</button>
           <a href="/csv?{{ csv_query_string }}">CSV</a>
-          <a href="/">Hreinsa</a>
+          <a href="/?clear_filters=1" id="clearFiltersLink">Hreinsa</a>
         </div>
       </form>
       <div class="summary">
@@ -684,7 +760,7 @@ CARD_TEMPLATE = """
       </article>
     </section>
     {% elif filters["view"] == "week" %}
-    <section class="week-shell">
+    <section class="week-shell" data-scroll-restore="week-shell">
       <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
         <div class="now-line" id="nowLine">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
@@ -698,14 +774,12 @@ CARD_TEMPLATE = """
         {% for cell in slot["cells"] %}
         <div class="week-cell">
           {% for row in cell %}
-          <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}" tabindex="0">
+          <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
+            <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
             <h3 class="slot-title">{{ row["meeting_name"] or "Ónefndur fundur" }}</h3>
-            <p class="slot-summary">
-              {% if row["location_nickname"] %}{{ row["location_nickname"] }}
-              {% elif row["location_text"] %}{{ row["location_text"] }}
-              {% else %}{{ row["fellowship_display"] }}{% endif %}
-            </p>
+            <p class="slot-summary">{{ row["summary_display"] }}</p>
             <div class="slot-tooltip">
+              <p class="slot-tooltip-title">{{ row["meeting_name"] or "Ónefndur fundur" }}</p>
               {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
               {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
               {% if row["location_text"] %}<p class="slot-meta">{{ row["location_text"] }}</p>{% endif %}
@@ -734,7 +808,8 @@ CARD_TEMPLATE = """
     {% else %}
     <section class="grid">
       {% for row in rows %}
-      <article class="card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}">
+      <article class="card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" data-meeting-id="{{ row["source_uid"] }}">
+        <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
         <div class="topline">
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
           <span class="pill">{{ row["source"] }}</span>
@@ -769,10 +844,251 @@ CARD_TEMPLATE = """
 </body>
 <script>
 (function() {
+  const filtersCookieName = "{{ filters_cookie_name }}";
+  const favoritesCookieName = "{{ favorites_cookie_name }}";
+  const filtersCollapsedKey = "aa-filters-collapsed";
+  const maxFavorites = 200;
+
+  const getCookie = (name) => {
+    const encoded = `${encodeURIComponent(name)}=`;
+    return document.cookie
+      .split('; ')
+      .find((part) => part.startsWith(encoded))
+      ?.slice(encoded.length) || '';
+  };
+
+  const setCookie = (name, value, days = 365) => {
+    const expires = new Date(Date.now() + (days * 24 * 60 * 60 * 1000)).toUTCString();
+    document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  };
+
+  const deleteCookie = (name) => {
+    document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  };
+
+  const parseJsonCookie = (name, fallback) => {
+    const raw = getCookie(name);
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(decodeURIComponent(raw));
+    } catch (_error) {
+      return fallback;
+    }
+  };
+
+  const favoriteSet = new Set(
+    parseJsonCookie(favoritesCookieName, [])
+      .filter((value) => typeof value === 'string' && value.trim())
+      .slice(0, maxFavorites)
+  );
+
+  const syncFavoriteButtons = () => {
+    document.querySelectorAll('[data-meeting-id]').forEach((node) => {
+      const meetingId = node.getAttribute('data-meeting-id') || '';
+      if (!meetingId) return;
+      const isFavorite = favoriteSet.has(meetingId);
+      if (node.classList.contains('favorite-toggle')) {
+        node.classList.toggle('is-active', isFavorite);
+        node.setAttribute('aria-pressed', isFavorite ? 'true' : 'false');
+        node.setAttribute('title', isFavorite ? 'Fjarlægja úr uppáhaldi' : 'Setja í uppáhald');
+      }
+      if (node.classList.contains('card') || node.classList.contains('slot-card')) {
+        node.classList.toggle('is-favorite', isFavorite);
+      }
+    });
+  };
+
+  const persistFavorites = () => {
+    setCookie(favoritesCookieName, JSON.stringify(Array.from(favoriteSet).sort()), 365);
+    syncFavoriteButtons();
+  };
+
+  document.querySelectorAll('.favorite-toggle').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const meetingId = button.getAttribute('data-meeting-id') || '';
+      if (!meetingId) return;
+      if (favoriteSet.has(meetingId)) {
+        favoriteSet.delete(meetingId);
+      } else if (favoriteSet.size < maxFavorites) {
+        favoriteSet.add(meetingId);
+      }
+      persistFavorites();
+    });
+  });
+
+  const filtersForm = document.getElementById('filtersForm');
+  const clearFiltersLink = document.getElementById('clearFiltersLink');
+  const filterToggle = document.getElementById('filterToggle');
+  const setFiltersCollapsed = (collapsed) => {
+    if (!filtersForm || !filterToggle) return;
+    filtersForm.classList.toggle('is-collapsed', collapsed);
+    filterToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    filterToggle.textContent = collapsed ? 'Sýna síur' : 'Fela síur';
+    localStorage.setItem(filtersCollapsedKey, collapsed ? '1' : '0');
+  };
+
+  if (filtersForm && filterToggle) {
+    const savedCollapsed = localStorage.getItem(filtersCollapsedKey);
+    setFiltersCollapsed(savedCollapsed !== '0');
+    filterToggle.addEventListener('click', () => {
+      setFiltersCollapsed(!filtersForm.classList.contains('is-collapsed'));
+    });
+  }
+
+  if (filtersForm) {
+    filtersForm.addEventListener('submit', () => {
+      const payload = {};
+      Array.from(new FormData(filtersForm).entries()).forEach(([key, value]) => {
+        if (key === 'view') return;
+        payload[key] = String(value || '').trim();
+      });
+      setCookie(filtersCookieName, JSON.stringify(payload), 365);
+    });
+  }
+  if (clearFiltersLink) {
+    clearFiltersLink.addEventListener('click', () => {
+      deleteCookie(filtersCookieName);
+    });
+  }
+
+  syncFavoriteButtons();
+})();
+
+(function() {
+  const storageKey = `aa-scroll:${window.location.pathname}${window.location.search}`;
+  const scrollShell = document.querySelector('[data-scroll-restore="week-shell"]');
+  window.__aaScrollRestoreState = { restored: false };
+
+  try {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+  } catch (_error) {
+    // noop
+  }
+
+  const restore = () => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      const top = Number(saved.top || 0);
+      const left = Number(saved.left || 0);
+      window.scrollTo(0, top);
+      if (scrollShell) {
+        scrollShell.scrollLeft = left;
+      }
+      window.__aaScrollRestoreState.restored = true;
+    } catch (_error) {
+      // noop
+    }
+  };
+
+  const persist = () => {
+    const payload = {
+      top: window.scrollY || window.pageYOffset || 0,
+      left: scrollShell ? scrollShell.scrollLeft : 0,
+    };
+    sessionStorage.setItem(storageKey, JSON.stringify(payload));
+  };
+
+  window.addEventListener('pagehide', persist);
+  window.addEventListener('beforeunload', persist);
+  requestAnimationFrame(() => requestAnimationFrame(restore));
+})();
+
+(function() {
+  const cards = Array.from(document.querySelectorAll('.slot-card'));
+  const weekShell = document.querySelector('.week-shell');
+  if (!cards.length) return;
+
+  const closeCards = (exceptCard = null) => {
+    cards.forEach((card) => {
+      if (card !== exceptCard) {
+        card.classList.remove('is-open');
+      }
+    });
+  };
+
+  const positionTooltip = (card) => {
+    const tooltip = card.querySelector('.slot-tooltip');
+    if (!tooltip) return;
+
+    tooltip.style.left = '10px';
+    tooltip.style.right = 'auto';
+    tooltip.style.top = 'calc(100% + 8px)';
+    tooltip.style.bottom = 'auto';
+    tooltip.style.transform = 'translateX(0)';
+
+    const viewportPadding = 10;
+    const boundaryRect = weekShell ? weekShell.getBoundingClientRect() : {
+      left: viewportPadding,
+      right: window.innerWidth - viewportPadding,
+      top: viewportPadding,
+      bottom: window.innerHeight - viewportPadding,
+    };
+    let rect = tooltip.getBoundingClientRect();
+    let shiftX = 0;
+    if (rect.right > boundaryRect.right - viewportPadding) {
+      shiftX -= rect.right - (boundaryRect.right - viewportPadding);
+    }
+    if (rect.left + shiftX < boundaryRect.left + viewportPadding) {
+      shiftX += (boundaryRect.left + viewportPadding) - (rect.left + shiftX);
+    }
+    tooltip.style.transform = `translateX(${shiftX}px)`;
+
+    rect = tooltip.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    if (rect.bottom > boundaryRect.bottom - viewportPadding && cardRect.top - rect.height - 8 >= boundaryRect.top + viewportPadding) {
+      tooltip.style.top = 'auto';
+      tooltip.style.bottom = 'calc(100% + 8px)';
+    }
+  };
+
+  cards.forEach((card) => {
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('a, button')) return;
+      const willOpen = !card.classList.contains('is-open');
+      closeCards(card);
+      card.classList.toggle('is-open', willOpen);
+      if (willOpen) {
+        positionTooltip(card);
+      }
+    });
+
+    card.addEventListener('mouseenter', () => positionTooltip(card));
+    card.addEventListener('focusin', () => {
+      card.classList.add('is-open');
+      positionTooltip(card);
+    });
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.slot-card')) {
+      closeCards();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeCards();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    cards.filter((card) => card.classList.contains('is-open')).forEach(positionTooltip);
+  });
+})();
+
+(function() {
   const board = document.querySelector('.week-board');
   const line = document.getElementById('nowLine');
   const label = document.getElementById('nowLineLabel');
+  const shell = document.querySelector('.week-shell');
   if (!board || !line || !label) return;
+  let initialAutoScrollDone = false;
 
   const parseMinutes = (value) => {
     const match = /^(\\d{1,2}):(\\d{2})$/.exec((value || '').trim());
@@ -845,6 +1161,24 @@ CARD_TEMPLATE = """
     line.style.top = `${top}px`;
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
+
+    if (
+      !initialAutoScrollDone
+      && !(window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
+      && visibleDayOrders.length === 1
+      && visibleDayOrders[0] === weekdayOrder
+    ) {
+      initialAutoScrollDone = true;
+      requestAnimationFrame(() => {
+        const shellRect = shell ? shell.getBoundingClientRect() : { top: 0 };
+        const lineRect = line.getBoundingClientRect();
+        const targetTop = Math.max(
+          0,
+          window.scrollY + lineRect.top - shellRect.top - 120
+        );
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+      });
+    }
   }
 
   updateNowLine();
@@ -960,6 +1294,92 @@ def truncate_text(value: str | None, max_length: int = 180) -> str | None:
     if len(text) <= max_length:
         return text
     return text[: max_length - 1].rstrip() + "…"
+
+
+def clean_display_value(value: object | None, *, allow_placeholder: bool = False) -> object | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = normalize_space(value)
+        if not text:
+            return None
+        if not allow_placeholder and text.casefold() in {"nan", "n/a", "none", "null", "nat"}:
+            return None
+        return text
+    return value
+
+
+def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    sanitized_rows: list[dict[str, object]] = []
+    for row in rows:
+        clean_row: dict[str, object] = {}
+        for key, value in row.items():
+            clean_row[key] = clean_display_value(value)
+        zoom_url = normalize_space(clean_row.get("zoom_url"))
+        if zoom_url and not re.match(r"^https?://", zoom_url, re.I):
+            clean_row["zoom_url"] = None
+        clean_row["summary_display"] = build_summary_display(clean_row)
+        sanitized_rows.append(clean_row)
+    return sanitized_rows
+
+
+def build_summary_display(row: dict[str, object]) -> str:
+    candidates = [
+        clean_display_value(row.get("location_nickname")),
+        clean_display_value(row.get("venue_text")),
+        clean_display_value(row.get("location_text")),
+        clean_display_value(row.get("subtitle")),
+        clean_display_value(row.get("fellowship_display")),
+    ]
+    seen: set[str] = set()
+    for candidate in candidates:
+        text = normalize_space(candidate)
+        if not text:
+            continue
+        if text.casefold() == "zoom":
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        return text
+    return "Nánari upplýsingar"
+
+
+def current_iceland_weekday() -> str:
+    today_order = datetime.now(ZoneInfo("Atlantic/Reykjavik")).isoweekday()
+    for day_name, day_order in WEEKDAY_ORDER.items():
+        if day_order == today_order:
+            return day_name
+    return next(iter(WEEKDAY_ORDER))
+
+
+def capital_region_mask(df: pd.DataFrame) -> pd.Series:
+    combined = (
+        df["canonical_location_text"].fillna("").astype(str)
+        + " "
+        + df["location_text"].fillna("").astype(str)
+        + " "
+        + df["venue_text"].fillna("").astype(str)
+    ).str.casefold()
+    patterns = [
+        "reykjav",
+        "kópavog",
+        "kopavog",
+        "hafnarfj",
+        "garðab",
+        "gardab",
+        "mosfellsb",
+        "seltjarnarn",
+        "álftanes",
+        "alftanes",
+    ]
+    mask = pd.Series(False, index=df.index)
+    for pattern in patterns:
+        mask = mask | combined.str.contains(pattern, regex=False)
+    return mask
 
 
 def pad_time(time_value: str | None) -> str | None:
@@ -1572,6 +1992,7 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
         df = pd.read_sql_query(
             """
             SELECT
+                m.source_uid,
                 m.source,
                 m.weekday_is,
                 m.weekday_order,
@@ -1681,17 +2102,43 @@ def build_query_string(filters: dict[str, str], overrides: dict[str, str] | None
     return urlencode({key: value for key, value in params.items() if value})
 
 
+def read_json_cookie(name: str) -> dict[str, object] | list[object] | None:
+    raw_value = request.cookies.get(name)
+    if not raw_value:
+        return None
+    try:
+        return json.loads(raw_value)
+    except json.JSONDecodeError:
+        return None
+
+
 def request_filters() -> dict[str, str]:
+    clear_filters = request.args.get("clear_filters", "").strip() == "1"
+    saved_filters = {} if clear_filters else (read_json_cookie(FILTERS_COOKIE_NAME) or {})
+    default_weekday = current_iceland_weekday()
+
+    def resolve_filter_value(name: str) -> str:
+        if name in request.args:
+            return request.args.get(name, "").strip()
+        if name == "weekday":
+            return default_weekday
+        if isinstance(saved_filters, dict):
+            if name in saved_filters:
+                return normalize_space(saved_filters.get(name))
+        return ""
+
     return {
-        "view": request.args.get("view", "list").strip() or "list",
-        "weekday": request.args.get("weekday", "").strip(),
-        "fellowship": request.args.get("fellowship", "").strip(),
-        "format": request.args.get("format", "").strip(),
-        "gender_restriction": request.args.get("gender_restriction", "").strip(),
-        "access_restriction": request.args.get("access_restriction", "").strip(),
-        "canonical_location": request.args.get("canonical_location", "").strip(),
-        "time_from": request.args.get("time_from", "").strip(),
-        "time_to": request.args.get("time_to", "").strip(),
+        "view": request.args.get("view", "week").strip() or "week",
+        "weekday": resolve_filter_value("weekday"),
+        "fellowship": resolve_filter_value("fellowship"),
+        "format": resolve_filter_value("format"),
+        "gender_restriction": resolve_filter_value("gender_restriction"),
+        "access_restriction": resolve_filter_value("access_restriction"),
+        "canonical_location": resolve_filter_value("canonical_location"),
+        "region": resolve_filter_value("region"),
+        "time_from": resolve_filter_value("time_from"),
+        "time_to": resolve_filter_value("time_to"),
+        "favorites_only": "1" if resolve_filter_value("favorites_only") in {"1", "true", "on", "yes"} else "",
     }
 
 
@@ -1717,6 +2164,10 @@ def build_filter_options(df: pd.DataFrame) -> dict[str, list[str] | list[dict[st
         "weekday_is": [day for day, _ in AA_DAY_PAGES],
         "fellowship": distinct_values(df, "fellowship"),
         "format": distinct_values(df, "format"),
+        "region_options": [
+            {"value": "capital", "label": "Höfuðborgarsvæðið"},
+            {"value": "rural", "label": "Landsbyggðin"},
+        ],
         "gender_filter_options": [
             {"value": "Blandaður", "label": "Bara blandaðir"},
             {"value": "Karlar", "label": "Bara karla"},
@@ -1993,6 +2444,17 @@ def build_app(db_path: Path) -> Flask:
             allowed = gender_filter_map.get(filters["gender_restriction"], {filters["gender_restriction"]})
             df = df[df["gender_restriction"].fillna("").isin(allowed)]
 
+        if filters["region"]:
+            remote_mask = df["format"].fillna("") == "Fjarfundur"
+            capital_mask = capital_region_mask(df)
+            if filters["region"] == "capital":
+                df = df[remote_mask | capital_mask]
+            elif filters["region"] == "rural":
+                df = df[remote_mask | ~capital_mask]
+
+        if filters["favorites_only"]:
+            df = df[df["is_favorite"]]
+
         if filters["time_from"]:
             df = df[df["start_time"].fillna("") >= filters["time_from"]]
 
@@ -2004,9 +2466,16 @@ def build_app(db_path: Path) -> Flask:
     @app.get("/")
     def index():
         df = load_dataframe(db_path)
+        favorite_cookie = read_json_cookie(FAVORITES_COOKIE_NAME) or []
+        favorite_ids = {
+            str(value).strip()
+            for value in favorite_cookie
+            if isinstance(value, str) and str(value).strip()
+        } if isinstance(favorite_cookie, list) else set()
+        df["is_favorite"] = df["source_uid"].fillna("").astype(str).isin(favorite_ids)
         filters = request_filters()
         filtered = filter_df(df, filters)
-        row_dicts = filtered.to_dict(orient="records")
+        row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
         displayed_week_days = [filters["weekday"]] if filters["weekday"] in [day for day, _ in AA_DAY_PAGES] else [day for day, _ in AA_DAY_PAGES]
         displayed_week_day_orders = [WEEKDAY_ORDER[day] for day in displayed_week_days]
         scraped_at = df["scraped_at_utc"].iloc[0] if not df.empty else "N/A"
@@ -2040,6 +2509,8 @@ def build_app(db_path: Path) -> Flask:
                 list_query_string=list_query_string,
                 week_query_string=week_query_string,
                 locations_query_string=locations_query_string,
+                filters_cookie_name=FILTERS_COOKIE_NAME,
+                favorites_cookie_name=FAVORITES_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
             ),
@@ -2049,6 +2520,13 @@ def build_app(db_path: Path) -> Flask:
     @app.get("/csv")
     def csv_download():
         df = load_dataframe(db_path)
+        favorite_cookie = read_json_cookie(FAVORITES_COOKIE_NAME) or []
+        favorite_ids = {
+            str(value).strip()
+            for value in favorite_cookie
+            if isinstance(value, str) and str(value).strip()
+        } if isinstance(favorite_cookie, list) else set()
+        df["is_favorite"] = df["source_uid"].fillna("").astype(str).isin(favorite_ids)
         filtered = filter_df(df, request_filters())
         csv_text = filtered.to_csv(index=False)
         return Response(
