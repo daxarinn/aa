@@ -1933,7 +1933,12 @@ def build_week_view(rows: list[dict[str, str | None]], week_days: list[str]) -> 
         ordered_cells = []
         for day in week_days:
             cell_rows = slot["cells"][day]
-            cell_rows.sort(key=lambda item: ((item.get("meeting_name") or ""), (item.get("location_text") or "")))
+            cell_rows.sort(
+                key=lambda item: (
+                    normalize_space(item.get("meeting_name")),
+                    normalize_space(item.get("location_text")),
+                )
+            )
             ordered_cells.append(cell_rows)
         ordered_slots.append(
             {
