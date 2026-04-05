@@ -1029,7 +1029,6 @@ CARD_TEMPLATE = """
   const filtersCookieName = "{{ filters_cookie_name }}";
   const favoritesCookieName = "{{ favorites_cookie_name }}";
   const filtersCollapsedKey = "aa-filters-collapsed";
-  const defaultWeekday = "{{ default_weekday }}";
   const maxFavorites = 200;
 
   const getCookie = (name) => {
@@ -1104,8 +1103,6 @@ CARD_TEMPLATE = """
   const filtersForm = document.getElementById('filtersForm');
   const clearFiltersLink = document.getElementById('clearFiltersLink');
   const filterToggle = document.getElementById('filterToggle');
-  const weekdaySelect = document.getElementById('weekday');
-  const favoritesOnlySelect = document.getElementById('favorites_only');
   const setFiltersCollapsed = (collapsed) => {
     if (!filtersForm || !filterToggle) return;
     filtersForm.classList.toggle('is-collapsed', collapsed);
@@ -1124,22 +1121,12 @@ CARD_TEMPLATE = """
 
   if (filtersForm) {
     filtersForm.addEventListener('submit', () => {
-      if (favoritesOnlySelect && favoritesOnlySelect.value === '1' && weekdaySelect && weekdaySelect.value === defaultWeekday) {
-        weekdaySelect.value = '';
-      }
       const payload = {};
       Array.from(new FormData(filtersForm).entries()).forEach(([key, value]) => {
         if (key === 'view') return;
         payload[key] = String(value || '').trim();
       });
       setCookie(filtersCookieName, JSON.stringify(payload), 365);
-    });
-  }
-  if (favoritesOnlySelect && weekdaySelect) {
-    favoritesOnlySelect.addEventListener('change', () => {
-      if (favoritesOnlySelect.value === '1' && weekdaySelect.value === defaultWeekday) {
-        weekdaySelect.value = '';
-      }
     });
   }
   if (clearFiltersLink) {
@@ -2289,8 +2276,8 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                     NULL AS zoom_meeting_id,
                     NULL AS zoom_passcode,
                     NULL AS zoom_url,
-                    NULL AS gender_restriction,
-                    NULL AS access_restriction,
+                    'Blandaður' AS gender_restriction,
+                    'Opinn' AS access_restriction,
                     NULL AS recurrence_hint,
                     me.notes,
                     'manual:' || me.event_id AS source_record_id,
@@ -2438,9 +2425,11 @@ def request_filters() -> dict[str, str]:
         if isinstance(saved_filters, dict):
             if name in saved_filters:
                 return normalize_space(saved_filters.get(name))
+        if name == "weekday":
+            return default_weekday
         return ""
 
-    filters = {
+    return {
         "view": request.args.get("view", "week").strip() or "week",
         "weekday": resolve_filter_value("weekday"),
         "fellowship": resolve_filter_value("fellowship"),
@@ -2454,10 +2443,6 @@ def request_filters() -> dict[str, str]:
         "time_to": resolve_filter_value("time_to"),
         "favorites_only": "1" if resolve_filter_value("favorites_only") in {"1", "true", "on", "yes"} else "",
     }
-    non_view_filters = {key: value for key, value in filters.items() if key != "view" and value}
-    if not non_view_filters:
-        filters["weekday"] = default_weekday
-    return filters
 
 
 def build_filter_options(df: pd.DataFrame) -> dict[str, list[str] | list[dict[str, str]]]:
