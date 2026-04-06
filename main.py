@@ -1658,7 +1658,7 @@ def size_bin_midpoint(size_bin: str | None) -> float | None:
 
 
 def size_bin_from_average(avg_size_value: float | None) -> str | None:
-    if avg_size_value is None:
+    if avg_size_value is None or pd.isna(avg_size_value):
         return None
     if avg_size_value < 10:
         return "2-9"
