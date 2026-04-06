@@ -1741,6 +1741,16 @@ def build_meeting_name_display(row: dict[str, object]) -> str:
     meeting_name = normalize_space(row.get("meeting_name"))
     if meeting_name:
         return meeting_name
+    location_nickname = normalize_space(row.get("location_nickname"))
+    if location_nickname:
+        return location_nickname
+    fallback_title = build_unnamed_meeting_fallback(row)
+    if fallback_title:
+        return fallback_title
+    return "Ónefndur fundur"
+
+
+def build_unnamed_meeting_fallback(row: dict[str, object]) -> str | None:
     fellowship_name = normalize_space(row.get("fellowship_display"))
     if fellowship_name and fellowship_name != "Óskráð félag":
         return f"{fellowship_name} fundur"
@@ -1748,12 +1758,11 @@ def build_meeting_name_display(row: dict[str, object]) -> str:
         row.get("canonical_location_text"),
         row.get("location_text"),
         row.get("venue_text"),
-        row.get("location_nickname"),
     ]:
         place_name = extract_place_name(candidate)
         if place_name:
             return place_name
-    return "Ónefndur fundur"
+    return None
 
 
 def build_venue_summary(value: object | None) -> str | None:
@@ -1788,7 +1797,11 @@ def build_venue_summary(value: object | None) -> str | None:
 
 
 def build_summary_display(row: dict[str, object]) -> str:
+    title_fallback = None
+    if not normalize_space(row.get("meeting_name")) and normalize_space(row.get("location_nickname")):
+        title_fallback = build_unnamed_meeting_fallback(row)
     candidates = [
+        title_fallback,
         clean_display_value(row.get("location_nickname")),
         extract_place_name(row.get("canonical_location_text")),
         extract_place_name(row.get("location_text")),
