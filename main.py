@@ -595,25 +595,37 @@ CARD_TEMPLATE = """
       margin-top: 4px;
     }
     .size-form {
-      margin-top: 8px;
+      margin-top: 6px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 6px;
       align-items: center;
+      max-width: 280px;
     }
     .size-form select,
     .size-form button {
-      border-radius: 10px;
+      border-radius: 8px;
       border: 1px solid var(--border);
-      padding: 7px 8px;
+      padding: 5px 7px;
       font: inherit;
       background: white;
+      font-size: 0.84rem;
     }
     .size-form button {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
+      background: #f8f5ee;
+      color: var(--muted);
+      border-color: #ddd5c4;
       cursor: pointer;
+    }
+    .size-note {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+    .size-help {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.78rem;
     }
   </style>
 </head>
@@ -1051,7 +1063,7 @@ CARD_TEMPLATE = """
             <div class="slot-tooltip">
               <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
               {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
-              {% if row["size_display"] %}<p class="slot-meta"><strong>{{ row["size_display"] }}</strong></p>{% endif %}
+              {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
               {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
               {% if row["location_text"] %}<p class="slot-meta">{{ row["location_text"] }}</p>{% endif %}
               {% if row["venue_text"] %}<p class="slot-meta">{{ row["venue_text"] }}</p>{% endif %}
@@ -1062,17 +1074,6 @@ CARD_TEMPLATE = """
                 {% if row["gender_restriction"] %}<span>{{ row["gender_restriction"] }}</span>{% endif %}
                 {% if row["access_restriction"] %}<span>{{ row["access_restriction"] }}</span>{% endif %}
               </div>
-              <form class="size-form" method="post" action="/size-report">
-                <input type="hidden" name="source_uid" value="{{ row["source_uid"] }}">
-                <input type="hidden" name="redirect_query" value="{{ current_query_string }}">
-                <select name="size_bin">
-                  <option value="">Fundarstærð</option>
-                  {% for item in options["size_bins"] %}
-                  <option value="{{ item["value"] }}" {% if row["current_size_bin"] == item["value"] %}selected{% endif %}>{{ item["label"] }}</option>
-                  {% endfor %}
-                </select>
-                <button type="submit">Vista</button>
-              </form>
               {% if row["zoom_url"] %}<a class="slot-link" href="{{ row["zoom_url"] }}" target="_blank" rel="noreferrer">Opna fund</a>{% endif %}
               <div class="slot-provenance">
                 <a href="{{ row["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
@@ -1096,12 +1097,12 @@ CARD_TEMPLATE = """
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
           <span class="pill">{{ row["source"] }}</span>
           <span class="pill">{{ row["fellowship_display"] }}</span>
-          {% if row["size_display"] %}<span class="pill">{{ row["size_display"] }}</span>{% endif %}
           {% if row["gender_restriction"] %}<span class="pill">{{ row["gender_restriction"] }}</span>{% endif %}
           {% if row["access_restriction"] %}<span class="pill">{{ row["access_restriction"] }}</span>{% endif %}
           {% if row["format"] %}<span class="pill">{{ row["format"] }}</span>{% endif %}
         </div>
         <h2>{{ row["meeting_name_display"] }}</h2>
+        {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
         {% if row["subtitle"] %}<p class="line"><strong>Undirlína:</strong> {{ row["subtitle"] }}</p>{% endif %}
         {% if row["location_nickname"] %}<p class="line"><strong>Gælunafn:</strong> {{ row["location_nickname"] }}</p>{% endif %}
         {% if row["location_text"] %}<p class="line"><strong>Staðsetning:</strong> {{ row["location_text"] }}</p>{% endif %}
@@ -1112,13 +1113,14 @@ CARD_TEMPLATE = """
           <input type="hidden" name="source_uid" value="{{ row["source_uid"] }}">
           <input type="hidden" name="redirect_query" value="{{ current_query_string }}">
           <select name="size_bin">
-            <option value="">Fundarstærð</option>
+            <option value="">Breyta fundarstærð</option>
             {% for item in options["size_bins"] %}
             <option value="{{ item["value"] }}" {% if row["current_size_bin"] == item["value"] %}selected{% endif %}>{{ item["label"] }}</option>
             {% endfor %}
           </select>
           <button type="submit">Vista</button>
         </form>
+        <p class="size-help">Aðeins til upplýsinga. Ný innsending uppfærir meðaltalið þegar fleiri svara.</p>
         {% if row["zoom_meeting_id"] or row["zoom_url"] %}
         <div class="zoom">
           {% if row["zoom_meeting_id"] %}<div><strong>Zoom ID:</strong> {{ row["zoom_meeting_id"] }}</div>{% endif %}
@@ -1265,6 +1267,7 @@ CARD_TEMPLATE = """
 
 (function() {
   const storageKey = `aa-scroll:${window.location.pathname}${window.location.search}`;
+  const postRestoreKey = `aa-post-restore:${window.location.pathname}${window.location.search}`;
   const scrollShell = document.querySelector('[data-scroll-restore="week-shell"]');
   window.__aaScrollRestoreState = { restored: false };
   const navigationEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
@@ -1278,31 +1281,47 @@ CARD_TEMPLATE = """
     // noop
   }
 
+  const capturePosition = () => ({
+    top: window.scrollY || window.pageYOffset || 0,
+    left: scrollShell ? scrollShell.scrollLeft : 0,
+  });
+
+  const applyPosition = (saved) => {
+    const top = Number(saved.top || 0);
+    const left = Number(saved.left || 0);
+    window.scrollTo(0, top);
+    if (scrollShell) {
+      scrollShell.scrollLeft = left;
+    }
+    window.__aaScrollRestoreState.restored = true;
+  };
+
   const restore = () => {
-    if (!shouldRestore) return;
     try {
+      const postRaw = sessionStorage.getItem(postRestoreKey);
+      if (postRaw) {
+        sessionStorage.removeItem(postRestoreKey);
+        applyPosition(JSON.parse(postRaw));
+        return;
+      }
+      if (!shouldRestore) return;
       const raw = sessionStorage.getItem(storageKey);
       if (!raw) return;
-      const saved = JSON.parse(raw);
-      const top = Number(saved.top || 0);
-      const left = Number(saved.left || 0);
-      window.scrollTo(0, top);
-      if (scrollShell) {
-        scrollShell.scrollLeft = left;
-      }
-      window.__aaScrollRestoreState.restored = true;
+      applyPosition(JSON.parse(raw));
     } catch (_error) {
       // noop
     }
   };
 
   const persist = () => {
-    const payload = {
-      top: window.scrollY || window.pageYOffset || 0,
-      left: scrollShell ? scrollShell.scrollLeft : 0,
-    };
-    sessionStorage.setItem(storageKey, JSON.stringify(payload));
+    sessionStorage.setItem(storageKey, JSON.stringify(capturePosition()));
   };
+
+  document.querySelectorAll('form.size-form').forEach((form) => {
+    form.addEventListener('submit', () => {
+      sessionStorage.setItem(postRestoreKey, JSON.stringify(capturePosition()));
+    });
+  });
 
   window.addEventListener('pagehide', persist);
   window.addEventListener('beforeunload', persist);
