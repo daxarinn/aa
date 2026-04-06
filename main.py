@@ -1141,7 +1141,6 @@ CARD_TEMPLATE = """
   const filtersCookieName = "{{ filters_cookie_name }}";
   const favoritesCookieName = "{{ favorites_cookie_name }}";
   const clientCookieName = "{{ client_cookie_name }}";
-  const filtersCollapsedKey = "aa-filters-collapsed";
   const defaultWeekday = "{{ default_weekday }}";
   const maxFavorites = 200;
 
@@ -1229,12 +1228,10 @@ CARD_TEMPLATE = """
     filtersForm.classList.toggle('is-collapsed', collapsed);
     filterToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     filterToggle.textContent = collapsed ? 'Sýna síur' : 'Fela síur';
-    localStorage.setItem(filtersCollapsedKey, collapsed ? '1' : '0');
   };
 
   if (filtersForm && filterToggle) {
-    const savedCollapsed = localStorage.getItem(filtersCollapsedKey);
-    setFiltersCollapsed(savedCollapsed !== '0');
+    setFiltersCollapsed(true);
     filterToggle.addEventListener('click', () => {
       setFiltersCollapsed(!filtersForm.classList.contains('is-collapsed'));
     });
@@ -1399,7 +1396,6 @@ CARD_TEMPLATE = """
   const board = document.querySelector('.week-board');
   const line = document.getElementById('nowLine');
   const label = document.getElementById('nowLineLabel');
-  const shell = document.querySelector('.week-shell');
   if (!board || !line || !label) return;
   let initialAutoScrollDone = false;
 
@@ -1425,6 +1421,28 @@ CARD_TEMPLATE = """
     timeZone: 'Atlantic/Reykjavik'
   });
   const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+
+  const attemptInitialAutoScroll = () => {
+    if (
+      initialAutoScrollDone
+      || (window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
+      || !line.classList.contains('visible')
+    ) {
+      return;
+    }
+
+    const currentWeekdayOrder = weekdayMap[weekdayFormatter.format(new Date())] || 0;
+    if (visibleDayOrders.length !== 1 || visibleDayOrders[0] !== currentWeekdayOrder) {
+      return;
+    }
+
+    const lineRect = line.getBoundingClientRect();
+    const absoluteTop = window.scrollY + lineRect.top;
+    const viewportOffset = Math.max(72, Math.round(window.innerHeight * 0.18));
+    const targetTop = Math.max(0, absoluteTop - viewportOffset);
+    initialAutoScrollDone = true;
+    window.scrollTo(0, targetTop);
+  };
 
   function updateNowLine() {
     const parts = formatter.formatToParts(new Date());
@@ -1475,26 +1493,14 @@ CARD_TEMPLATE = """
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
 
-    if (
-      !initialAutoScrollDone
-      && !(window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
-      && visibleDayOrders.length === 1
-      && visibleDayOrders[0] === weekdayOrder
-    ) {
-      initialAutoScrollDone = true;
-      requestAnimationFrame(() => {
-        const shellRect = shell ? shell.getBoundingClientRect() : { top: 0 };
-        const lineRect = line.getBoundingClientRect();
-        const targetTop = Math.max(
-          0,
-          window.scrollY + lineRect.top - shellRect.top - 120
-        );
-        window.scrollTo({ top: targetTop, behavior: 'smooth' });
-      });
-    }
+    attemptInitialAutoScroll();
   }
 
   updateNowLine();
+  requestAnimationFrame(() => requestAnimationFrame(attemptInitialAutoScroll));
+  window.setTimeout(attemptInitialAutoScroll, 250);
+  window.setTimeout(attemptInitialAutoScroll, 900);
+  window.addEventListener('load', attemptInitialAutoScroll);
   window.addEventListener('resize', updateNowLine);
   setInterval(updateNowLine, 30000);
 })();
