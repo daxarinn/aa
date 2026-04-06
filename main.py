@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import hashlib
 import html
 import json
+import os
 import re
+import secrets
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -18,7 +21,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, Response, redirect, request
+from flask import Flask, Response, redirect, request, session
 
 
 AA_ALL_MEETINGS_URL = "https://aa.is/aa-fundir/allir-fundir"
@@ -58,6 +61,14 @@ DEFAULT_DB_PATH = Path("data/meetings.sqlite")
 DEFAULT_CSV_PATH = Path("exports/meetings_latest.csv")
 FILTERS_COOKIE_NAME = "aa_filters"
 FAVORITES_COOKIE_NAME = "aa_favorites"
+CLIENT_COOKIE_NAME = "aa_client_id"
+SIZE_BIN_OPTIONS = [
+    {"value": "2-9", "label": "2-9", "midpoint": 5.5},
+    {"value": "10-19", "label": "10-19", "midpoint": 14.5},
+    {"value": "20-39", "label": "20-39", "midpoint": 29.5},
+    {"value": "40+", "label": "40+", "midpoint": 45.0},
+]
+SIZE_BIN_VALUES = {item["value"] for item in SIZE_BIN_OPTIONS}
 
 
 SCHEMA_SQL = """
@@ -123,6 +134,14 @@ CREATE TABLE IF NOT EXISTS manual_events (
     source_page_url TEXT,
     updated_at_utc TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS meeting_size_reports (
+    source_uid TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    size_bin TEXT NOT NULL,
+    reported_at_utc TEXT NOT NULL,
+    PRIMARY KEY (source_uid, client_id)
+);
 """
 
 
@@ -132,7 +151,7 @@ CARD_TEMPLATE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AA fundaskrá snapshot</title>
+  <title>Fundaskrá</title>
   <style>
     :root {
       --card: #fffdf8;
@@ -160,7 +179,7 @@ CARD_TEMPLATE = """
       backdrop-filter: blur(8px);
       box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
     }
-    h1 { font-size: clamp(1.8rem, 4vw, 3rem); margin: 0 0 8px; line-height: 1.05; }
+    h1 { font-size: clamp(1.6rem, 3.2vw, 2.4rem); margin: 0 0 6px; line-height: 1.05; }
     .meta { color: var(--muted); font-size: 0.95rem; margin: 0; }
     .filters {
       display: grid;
@@ -563,13 +582,46 @@ CARD_TEMPLATE = """
       font-size: 0.84rem;
       line-height: 1.4;
     }
+    .admin-login {
+      max-width: 420px;
+      margin-top: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .admin-nav {
+      display: inline-flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .size-form {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+    }
+    .size-form select,
+    .size-form button {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 7px 8px;
+      font: inherit;
+      background: white;
+    }
+    .size-form button {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1>AA fundaskrá snapshot</h1>
-      <p class="meta">Fundir af aa.is og fjarfundir.org. Síðast sótt: {{ scraped_at }}</p>
+      <h1>Fundaskrá</h1>
+      <p class="meta">AA, fjarfundir og kirkjusamkomur. Uppfært {{ scraped_at }}</p>
       <div class="filter-panel-header">
         <button type="button" class="filter-toggle" id="filterToggle" aria-expanded="false">Sýna síur</button>
       </div>
@@ -673,13 +725,36 @@ CARD_TEMPLATE = """
         {% endfor %}
       </div>
       <div class="view-switch">
-        <a href="/?{{ list_query_string }}" class="{% if filters["view"] != "week" %}active{% endif %}">Línuleg sýn</a>
+        <a href="/?{{ list_query_string }}" class="{% if filters["view"] == "list" %}active{% endif %}">Línuleg sýn</a>
         <a href="/?{{ week_query_string }}" class="{% if filters["view"] == "week" %}active{% endif %}">Vikusýn</a>
-        <a href="/?{{ locations_query_string }}" class="{% if filters["view"] == "locations" %}active{% endif %}">Staðamöppun</a>
-        <a href="/?{{ church_query_string }}" class="{% if filters["view"] == "church" %}active{% endif %}">Kirkjuskráning</a>
       </div>
     </section>
-    {% if filters["view"] == "locations" %}
+    {% if filters["view"] == "admin" %}
+    {% if not admin_authenticated %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <p class="mapping-meta">Skráðu þig inn til að breyta staðamöppunum og kirkjusamkomum.</p>
+        <form class="admin-login" method="post" action="/admin/login">
+          <input type="hidden" name="redirect_query" value="{{ admin_query_string }}">
+          <input type="password" name="password" placeholder="Lykilorð">
+          <button type="submit">Innskrá</button>
+        </form>
+      </article>
+    </section>
+    {% elif admin_section == "locations" %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <div class="admin-nav">
+          <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
+          <form method="post" action="/admin/logout">
+            <button type="submit">Útskrá</button>
+          </form>
+        </div>
+      </article>
+    </section>
     <section class="mapping-section">
       <article class="mapping-card">
         <h3>Skráðar staðamappanir</h3>
@@ -837,7 +912,19 @@ CARD_TEMPLATE = """
         </table>
       </article>
     </section>
-    {% elif filters["view"] == "church" %}
+    {% else %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <div class="admin-nav">
+          <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
+          <form method="post" action="/admin/logout">
+            <button type="submit">Útskrá</button>
+          </form>
+        </div>
+      </article>
+    </section>
     <section class="mapping-section">
       <article class="mapping-card">
         <h3>{% if church_edit_event %}Breyta kirkjusamkomu{% else %}Ný kirkjusamkoma{% endif %}</h3>
@@ -887,7 +974,7 @@ CARD_TEMPLATE = """
           </div>
           <div class="filter-actions">
             <button type="submit">{% if church_edit_event %}Uppfæra kirkjusamkomu{% else %}Vista kirkjusamkomu{% endif %}</button>
-            {% if church_edit_event %}<a href="/?view=church">Hætta við</a>{% endif %}
+            {% if church_edit_event %}<a href="/admin?{{ church_query_string }}">Hætta við</a>{% endif %}
           </div>
         </form>
       </article>
@@ -921,7 +1008,7 @@ CARD_TEMPLATE = """
                 {% if item["source_page_url"] %}<br><a href="{{ item["source_page_url"] }}" target="_blank" rel="noreferrer">Slóð</a>{% endif %}
               </td>
               <td>
-                <a href="/?view=church&edit_event_id={{ item["event_id"] }}">Breyta</a>
+                <a href="/admin?admin_section=church&edit_event_id={{ item["event_id"] }}">Breyta</a>
                 <form method="post" action="/church/delete">
                   <input type="hidden" name="event_id" value="{{ item["event_id"] }}">
                   <input type="hidden" name="redirect_query" value="{{ church_query_string }}">
@@ -937,6 +1024,7 @@ CARD_TEMPLATE = """
         {% endif %}
       </article>
     </section>
+    {% endif %}
     {% elif total_count == 0 %}
     <section class="empty-state">
       Engir fundir pössuðu við valdar síur.
@@ -963,6 +1051,7 @@ CARD_TEMPLATE = """
             <div class="slot-tooltip">
               <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
               {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
+              {% if row["size_display"] %}<p class="slot-meta"><strong>{{ row["size_display"] }}</strong></p>{% endif %}
               {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
               {% if row["location_text"] %}<p class="slot-meta">{{ row["location_text"] }}</p>{% endif %}
               {% if row["venue_text"] %}<p class="slot-meta">{{ row["venue_text"] }}</p>{% endif %}
@@ -973,6 +1062,17 @@ CARD_TEMPLATE = """
                 {% if row["gender_restriction"] %}<span>{{ row["gender_restriction"] }}</span>{% endif %}
                 {% if row["access_restriction"] %}<span>{{ row["access_restriction"] }}</span>{% endif %}
               </div>
+              <form class="size-form" method="post" action="/size-report">
+                <input type="hidden" name="source_uid" value="{{ row["source_uid"] }}">
+                <input type="hidden" name="redirect_query" value="{{ current_query_string }}">
+                <select name="size_bin">
+                  <option value="">Fundarstærð</option>
+                  {% for item in options["size_bins"] %}
+                  <option value="{{ item["value"] }}" {% if row["current_size_bin"] == item["value"] %}selected{% endif %}>{{ item["label"] }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit">Vista</button>
+              </form>
               {% if row["zoom_url"] %}<a class="slot-link" href="{{ row["zoom_url"] }}" target="_blank" rel="noreferrer">Opna fund</a>{% endif %}
               <div class="slot-provenance">
                 <a href="{{ row["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
@@ -996,6 +1096,7 @@ CARD_TEMPLATE = """
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
           <span class="pill">{{ row["source"] }}</span>
           <span class="pill">{{ row["fellowship_display"] }}</span>
+          {% if row["size_display"] %}<span class="pill">{{ row["size_display"] }}</span>{% endif %}
           {% if row["gender_restriction"] %}<span class="pill">{{ row["gender_restriction"] }}</span>{% endif %}
           {% if row["access_restriction"] %}<span class="pill">{{ row["access_restriction"] }}</span>{% endif %}
           {% if row["format"] %}<span class="pill">{{ row["format"] }}</span>{% endif %}
@@ -1007,6 +1108,17 @@ CARD_TEMPLATE = """
         {% if row["venue_text"] %}<p class="line"><strong>Staður:</strong> {{ row["venue_text"] }}</p>{% endif %}
         {% if row["recurrence_hint"] %}<p class="line"><strong>Regluleiki:</strong> {{ row["recurrence_hint"] }}</p>{% endif %}
         {% if row["notes"] %}<p class="line"><strong>Glósur:</strong> {{ row["notes"] }}</p>{% endif %}
+        <form class="size-form" method="post" action="/size-report">
+          <input type="hidden" name="source_uid" value="{{ row["source_uid"] }}">
+          <input type="hidden" name="redirect_query" value="{{ current_query_string }}">
+          <select name="size_bin">
+            <option value="">Fundarstærð</option>
+            {% for item in options["size_bins"] %}
+            <option value="{{ item["value"] }}" {% if row["current_size_bin"] == item["value"] %}selected{% endif %}>{{ item["label"] }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Vista</button>
+        </form>
         {% if row["zoom_meeting_id"] or row["zoom_url"] %}
         <div class="zoom">
           {% if row["zoom_meeting_id"] %}<div><strong>Zoom ID:</strong> {{ row["zoom_meeting_id"] }}</div>{% endif %}
@@ -1028,6 +1140,7 @@ CARD_TEMPLATE = """
 (function() {
   const filtersCookieName = "{{ filters_cookie_name }}";
   const favoritesCookieName = "{{ favorites_cookie_name }}";
+  const clientCookieName = "{{ client_cookie_name }}";
   const filtersCollapsedKey = "aa-filters-collapsed";
   const defaultWeekday = "{{ default_weekday }}";
   const maxFavorites = 200;
@@ -1058,6 +1171,13 @@ CARD_TEMPLATE = """
       return fallback;
     }
   };
+
+  if (!getCookie(clientCookieName)) {
+    const randomValue = window.crypto && window.crypto.randomUUID
+      ? window.crypto.randomUUID()
+      : `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setCookie(clientCookieName, randomValue, 365);
+  }
 
   const favoriteSet = new Set(
     parseJsonCookie(favoritesCookieName, [])
@@ -1126,7 +1246,10 @@ CARD_TEMPLATE = """
       Array.from(new FormData(filtersForm).entries()).forEach(([key, value]) => {
         if (key === 'view') return;
         const normalizedValue = String(value || '').trim();
-        if (key === 'weekday' && (!normalizedValue || normalizedValue === defaultWeekday)) {
+        if (key === 'weekday') {
+          return;
+        }
+        if (key === 'include_church' && normalizedValue === '1') {
           return;
         }
         payload[key] = normalizedValue;
@@ -1147,6 +1270,8 @@ CARD_TEMPLATE = """
   const storageKey = `aa-scroll:${window.location.pathname}${window.location.search}`;
   const scrollShell = document.querySelector('[data-scroll-restore="week-shell"]');
   window.__aaScrollRestoreState = { restored: false };
+  const navigationEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+  const shouldRestore = navigationEntry && navigationEntry.type === 'back_forward';
 
   try {
     if ('scrollRestoration' in history) {
@@ -1157,6 +1282,7 @@ CARD_TEMPLATE = """
   }
 
   const restore = () => {
+    if (!shouldRestore) return;
     try {
       const raw = sessionStorage.getItem(storageKey);
       if (!raw) return;
@@ -1498,6 +1624,40 @@ def clean_display_value(value: object | None, *, allow_placeholder: bool = False
     return value
 
 
+def size_bin_midpoint(size_bin: str | None) -> float | None:
+    normalized = normalize_space(size_bin)
+    for item in SIZE_BIN_OPTIONS:
+        if item["value"] == normalized:
+            return float(item["midpoint"])
+    return None
+
+
+def size_bin_from_average(avg_size_value: float | None) -> str | None:
+    if avg_size_value is None:
+        return None
+    if avg_size_value < 10:
+        return "2-9"
+    if avg_size_value < 20:
+        return "10-19"
+    if avg_size_value < 40:
+        return "20-39"
+    return "40+"
+
+
+def build_size_display(avg_size_bin: object | None, report_count: object | None) -> str | None:
+    label = normalize_space(avg_size_bin)
+    if not label:
+        return None
+    try:
+        count = int(report_count or 0)
+    except (TypeError, ValueError):
+        count = 0
+    if count > 0:
+        suffix = "svar" if count == 1 else "svör"
+        return f"Stærð {label} ({count} {suffix})"
+    return f"Stærð {label}"
+
+
 def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     sanitized_rows: list[dict[str, object]] = []
     for row in rows:
@@ -1509,6 +1669,7 @@ def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, ob
         if zoom_url and not re.match(r"^https?://", zoom_url, re.I):
             clean_row["zoom_url"] = None
         clean_row["summary_display"] = build_summary_display(clean_row)
+        clean_row["size_display"] = build_size_display(clean_row.get("avg_size_bin"), clean_row.get("size_report_count"))
         sanitized_rows.append(clean_row)
     return sanitized_rows
 
@@ -1632,6 +1793,17 @@ def current_iceland_weekday() -> str:
         if day_order == today_order:
             return day_name
     return next(iter(WEEKDAY_ORDER))
+
+
+def format_scraped_at_short(value: object | None) -> str:
+    text = normalize_space(value)
+    if not text:
+        return "óþekkt"
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    return parsed.astimezone(ZoneInfo("Atlantic/Reykjavik")).strftime("%Y-%m-%d %H:%M")
 
 
 def capital_region_mask(df: pd.DataFrame) -> pd.Series:
@@ -2330,6 +2502,22 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                     ) AS raw_json,
                     me.updated_at_utc AS scraped_at_utc
                 FROM manual_events me
+            ),
+            size_reports AS (
+                SELECT
+                    source_uid,
+                    COUNT(*) AS size_report_count,
+                    AVG(
+                        CASE size_bin
+                            WHEN '2-9' THEN 5.5
+                            WHEN '10-19' THEN 14.5
+                            WHEN '20-39' THEN 29.5
+                            WHEN '40+' THEN 45.0
+                            ELSE NULL
+                        END
+                    ) AS avg_size_value
+                FROM meeting_size_reports
+                GROUP BY source_uid
             )
             SELECT
                 u.source_uid,
@@ -2358,12 +2546,16 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                 u.source_record_id,
                 u.source_page_url,
                 u.raw_json,
-                u.scraped_at_utc
+                u.scraped_at_utc,
+                sr.size_report_count,
+                sr.avg_size_value
             FROM unified u
             LEFT JOIN location_aliases la
                 ON la.alias_location_text = u.location_text
             LEFT JOIN location_metadata lm
                 ON lm.canonical_location_text = COALESCE(la.canonical_location_text, u.location_text)
+            LEFT JOIN size_reports sr
+                ON sr.source_uid = u.source_uid
             ORDER BY weekday_order, start_time, time_display, source, meeting_name
             """,
             conn,
@@ -2383,6 +2575,7 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
         df["source_excerpt"] = excerpts
         df["fellowship_display"] = df["fellowship"].fillna("").astype(str).str.strip()
         df.loc[df["fellowship_display"] == "", "fellowship_display"] = "Óskráð félag"
+        df["avg_size_bin"] = df["avg_size_value"].apply(size_bin_from_average)
     return df
 
 
@@ -2460,15 +2653,20 @@ def request_filters() -> dict[str, str]:
     def resolve_filter_value(name: str) -> str:
         if name in request.args:
             return request.args.get(name, "").strip()
-        if isinstance(saved_filters, dict):
-            if name in saved_filters:
-                value = normalize_space(saved_filters.get(name))
-                if name == "weekday" and not value:
-                    return default_weekday
-                return value
         if name == "weekday":
             return default_weekday
+        if isinstance(saved_filters, dict):
+            if name in saved_filters:
+                return normalize_space(saved_filters.get(name))
         return ""
+
+    include_church_value = ""
+    if "include_church" in request.args:
+        include_church_value = request.args.get("include_church", "").strip()
+    elif isinstance(saved_filters, dict) and "include_church" in saved_filters:
+        include_church_value = normalize_space(saved_filters.get("include_church"))
+    else:
+        include_church_value = "1"
 
     return {
         "view": request.args.get("view", "week").strip() or "week",
@@ -2479,7 +2677,7 @@ def request_filters() -> dict[str, str]:
         "access_restriction": resolve_filter_value("access_restriction"),
         "canonical_location": resolve_filter_value("canonical_location"),
         "region": resolve_filter_value("region"),
-        "include_church": "1" if resolve_filter_value("include_church") in {"1", "true", "on", "yes"} else "",
+        "include_church": "1" if include_church_value in {"1", "true", "on", "yes"} else "",
         "time_from": resolve_filter_value("time_from"),
         "time_to": resolve_filter_value("time_to"),
         "favorites_only": "1" if resolve_filter_value("favorites_only") in {"1", "true", "on", "yes"} else "",
@@ -2506,6 +2704,7 @@ def build_filter_options(df: pd.DataFrame) -> dict[str, list[str] | list[dict[st
         "weekday_is": [day for day, _ in AA_DAY_PAGES],
         "fellowship": distinct_values(df, "fellowship"),
         "format": distinct_values(df, "format"),
+        "size_bins": [{"value": item["value"], "label": item["label"]} for item in SIZE_BIN_OPTIONS],
         "region_options": [
             {"value": "capital", "label": "Höfuðborgarsvæðið"},
             {"value": "rural", "label": "Landsbyggðin"},
@@ -2664,6 +2863,32 @@ def save_manual_event(
         conn.commit()
 
 
+def save_meeting_size_report(db_path: Path, source_uid: str, client_id: str, size_bin: str) -> None:
+    ensure_schema(db_path)
+    clean_source_uid = normalize_space(source_uid)
+    clean_client_id = normalize_space(client_id)
+    clean_size_bin = normalize_space(size_bin)
+    if not clean_source_uid or not clean_client_id or clean_size_bin not in SIZE_BIN_VALUES:
+        return
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO meeting_size_reports (source_uid, client_id, size_bin, reported_at_utc)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(source_uid, client_id) DO UPDATE SET
+                size_bin = excluded.size_bin,
+                reported_at_utc = excluded.reported_at_utc
+            """,
+            (
+                clean_source_uid,
+                clean_client_id,
+                clean_size_bin,
+                datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            ),
+        )
+        conn.commit()
+
+
 def delete_manual_event(db_path: Path, event_id: str | None) -> None:
     ensure_schema(db_path)
     if not event_id or not str(event_id).strip().isdigit():
@@ -2698,6 +2923,19 @@ def load_manual_events(db_path: Path) -> list[dict[str, object]]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def load_user_size_reports(db_path: Path, client_id: str | None) -> dict[str, str]:
+    ensure_schema(db_path)
+    clean_client_id = normalize_space(client_id)
+    if not clean_client_id:
+        return {}
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT source_uid, size_bin FROM meeting_size_reports WHERE client_id = ?",
+            (clean_client_id,),
+        ).fetchall()
+    return {str(source_uid): str(size_bin) for source_uid, size_bin in rows if source_uid and size_bin}
 
 
 def build_location_review_rows(df: pd.DataFrame, query: str) -> list[dict[str, object]]:
@@ -2863,8 +3101,26 @@ def detect_local_ipv4_addresses() -> list[str]:
     return preferred
 
 
+def admin_password() -> str:
+    return os.environ.get("AA_ADMIN_PASSWORD", "fundaskra")
+
+
+def admin_secret_key(db_path: Path) -> str:
+    configured = os.environ.get("AA_SECRET_KEY")
+    if configured:
+        return configured
+    return hashlib.sha256(f"aa:{db_path.resolve()}".encode("utf-8")).hexdigest()
+
+
 def build_app(db_path: Path) -> Flask:
     app = Flask(__name__)
+    app.secret_key = admin_secret_key(db_path)
+
+    def is_admin_authenticated() -> bool:
+        return bool(session.get("aa_admin_ok"))
+
+    def admin_redirect_target(default_section: str = "locations") -> str:
+        return f"/admin?admin_section={default_section}"
 
     def filter_df(df: pd.DataFrame, filters: dict[str, str]) -> pd.DataFrame:
         exact_map = {
@@ -2924,8 +3180,7 @@ def build_app(db_path: Path) -> Flask:
 
         return df
 
-    @app.get("/")
-    def index():
+    def render_page(*, admin_mode: bool) -> Response:
         df = load_dataframe(db_path)
         favorite_cookie = read_json_cookie(FAVORITES_COOKIE_NAME) or []
         favorite_ids = {
@@ -2934,7 +3189,17 @@ def build_app(db_path: Path) -> Flask:
             if isinstance(value, str) and str(value).strip()
         } if isinstance(favorite_cookie, list) else set()
         df["is_favorite"] = df["source_uid"].fillna("").astype(str).isin(favorite_ids)
+        client_id = normalize_space(request.cookies.get(CLIENT_COOKIE_NAME))
+        user_size_reports = load_user_size_reports(db_path, client_id)
+        df["current_size_bin"] = df["source_uid"].fillna("").astype(str).map(user_size_reports).fillna("")
         filters = request_filters()
+        admin_section = request.args.get("admin_section", "locations").strip() or "locations"
+        if admin_section not in {"locations", "church"}:
+            admin_section = "locations"
+        if admin_mode:
+            filters["view"] = "admin"
+        elif filters["view"] in {"locations", "church", "admin"}:
+            filters["view"] = "week"
         filtered = filter_df(df, filters)
         row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
         displayed_week_days = [filters["weekday"]] if filters["weekday"] in [day for day, _ in AA_DAY_PAGES] else [day for day, _ in AA_DAY_PAGES]
@@ -2951,9 +3216,11 @@ def build_app(db_path: Path) -> Flask:
         csv_query_string = build_query_string(filters, exclude={"view"})
         list_query_string = build_query_string(filters, overrides={"view": "list"})
         week_query_string = build_query_string(filters, overrides={"view": "week"})
-        locations_query_string = build_query_string(filters, overrides={"view": "locations"})
-        church_query_string = build_query_string(filters, overrides={"view": "church"})
-        location_rows = build_location_review_rows(filtered, "")
+        admin_query_string = build_query_string(filters, overrides={"admin_section": admin_section}, exclude={"view"})
+        locations_query_string = build_query_string(filters, overrides={"admin_section": "locations"}, exclude={"view"})
+        church_query_string = build_query_string(filters, overrides={"admin_section": "church"}, exclude={"view"})
+        current_query_string = request.query_string.decode("utf-8", errors="ignore").strip()
+        location_rows = build_location_review_rows(df[df["source"].fillna("") != "kirkja"], "")
         location_clusters = build_location_clusters(location_rows)
         manual_events = load_manual_events(db_path)
         mapped_location_rows = [
@@ -2964,7 +3231,7 @@ def build_app(db_path: Path) -> Flask:
             (item for item in manual_events if str(item.get("event_id")) == edit_event_id),
             None,
         ) if edit_event_id else None
-        return Response(
+        response = Response(
             app.jinja_env.from_string(CARD_TEMPLATE).render(
                 rows=row_dicts,
                 week_slots=build_week_view(row_dicts, displayed_week_days),
@@ -2972,26 +3239,42 @@ def build_app(db_path: Path) -> Flask:
                 week_day_orders=displayed_week_day_orders,
                 week_day_count=len(displayed_week_days),
                 total_count=len(filtered),
-                scraped_at=scraped_at,
+                scraped_at=format_scraped_at_short(scraped_at),
                 options=options,
                 filters=filters,
                 source_counts=list(source_counts),
                 csv_query_string=csv_query_string,
                 list_query_string=list_query_string,
                 week_query_string=week_query_string,
+                admin_query_string=admin_query_string,
                 locations_query_string=locations_query_string,
                 church_query_string=church_query_string,
+                current_query_string=current_query_string,
                 default_weekday=current_iceland_weekday(),
                 filters_cookie_name=FILTERS_COOKIE_NAME,
                 favorites_cookie_name=FAVORITES_COOKIE_NAME,
+                client_cookie_name=CLIENT_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
                 mapped_location_rows=mapped_location_rows,
                 manual_events=manual_events,
                 church_edit_event=church_edit_event,
+                admin_authenticated=is_admin_authenticated(),
+                admin_section=admin_section,
             ),
             mimetype="text/html",
         )
+        if not client_id:
+            response.set_cookie(CLIENT_COOKIE_NAME, secrets.token_hex(16), max_age=365 * 24 * 60 * 60, samesite="Lax")
+        return response
+
+    @app.get("/")
+    def index():
+        return render_page(admin_mode=False)
+
+    @app.get("/admin")
+    def admin_index():
+        return render_page(admin_mode=True)
 
     @app.get("/csv")
     def csv_download():
@@ -3011,28 +3294,61 @@ def build_app(db_path: Path) -> Flask:
             headers={"Content-Disposition": "attachment; filename=meetings_filtered.csv"},
         )
 
+    @app.post("/admin/login")
+    def admin_login():
+        password = request.form.get("password", "")
+        redirect_query = request.form.get("redirect_query", "").strip()
+        if hmac.compare_digest(password, admin_password()):
+            session["aa_admin_ok"] = True
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=locations")
+        return redirect(target)
+
+    @app.post("/admin/logout")
+    def admin_logout():
+        session.pop("aa_admin_ok", None)
+        return redirect(admin_redirect_target("locations"))
+
+    @app.post("/size-report")
+    def size_report():
+        client_id = normalize_space(request.cookies.get(CLIENT_COOKIE_NAME))
+        save_meeting_size_report(
+            db_path,
+            request.form.get("source_uid", ""),
+            client_id,
+            request.form.get("size_bin", ""),
+        )
+        redirect_query = request.form.get("redirect_query", "").strip()
+        target = "/" + (f"?{redirect_query}" if redirect_query else "")
+        return redirect(target)
+
     @app.post("/locations/map")
     def location_map():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("locations"))
         alias_location_text = request.form.get("alias_location_text", "").strip()
         canonical_location_text = request.form.get("canonical_location_text", "").strip()
         redirect_query = request.form.get("redirect_query", "").strip()
         if alias_location_text:
             save_location_mapping(db_path, alias_location_text, canonical_location_text)
-        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=locations")
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=locations")
         return redirect(target)
 
     @app.post("/locations/nickname")
     def location_nickname():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("locations"))
         canonical_location_text = request.form.get("canonical_location_text", "").strip()
         nickname = request.form.get("nickname", "").strip()
         redirect_query = request.form.get("redirect_query", "").strip()
         if canonical_location_text:
             save_location_nickname(db_path, canonical_location_text, nickname)
-        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=locations")
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=locations")
         return redirect(target)
 
     @app.post("/church/save")
     def church_save():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("church"))
         save_manual_event(
             db_path,
             event_id=request.form.get("event_id"),
@@ -3048,14 +3364,16 @@ def build_app(db_path: Path) -> Flask:
             source_page_url=request.form.get("source_page_url", ""),
         )
         redirect_query = request.form.get("redirect_query", "").strip()
-        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=church")
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=church")
         return redirect(target)
 
     @app.post("/church/delete")
     def church_delete():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("church"))
         delete_manual_event(db_path, request.form.get("event_id"))
         redirect_query = request.form.get("redirect_query", "").strip()
-        target = "/" + (f"?{redirect_query}" if redirect_query else "?view=church")
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=church")
         return redirect(target)
 
     return app
