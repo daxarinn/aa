@@ -142,6 +142,14 @@ CREATE TABLE IF NOT EXISTS meeting_size_reports (
     reported_at_utc TEXT NOT NULL,
     PRIMARY KEY (source_uid, client_id)
 );
+
+CREATE TABLE IF NOT EXISTS client_visits (
+    visit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    visited_at_utc TEXT NOT NULL,
+    path TEXT NOT NULL,
+    query_string TEXT
+);
 """
 
 
@@ -347,31 +355,51 @@ CARD_TEMPLATE = """
     .week-board {
       min-width: 920px;
       display: grid;
-      grid-template-columns: 88px repeat(7, minmax(120px, 1fr));
+      grid-template-columns: 36px repeat(7, minmax(120px, 1fr));
       position: relative;
     }
     .week-board.single-day {
       min-width: 0;
-      grid-template-columns: 88px minmax(0, 1fr);
+      grid-template-columns: 36px minmax(0, 1fr);
     }
     .week-head {
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 4;
       background: #f8f5ee;
       border-bottom: 1px solid var(--border);
-      padding: 9px 8px;
+      padding: 7px 6px;
       font-size: 0.88rem;
       font-weight: 700;
     }
+    .week-board > .week-head:first-child {
+      left: 0;
+      z-index: 6;
+      border-right: 1px solid var(--border);
+      text-align: center;
+    }
     .time-cell {
-      padding: 9px 8px;
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      padding: 4px 1px;
       border-right: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
       color: var(--accent);
       font-weight: 700;
-      font-size: 0.9rem;
+      font-size: 0.68rem;
       background: rgba(248,245,238,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .time-cell-text,
+    .week-time-head {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: nowrap;
+      line-height: 1;
     }
     .week-cell {
       min-height: 80px;
@@ -434,6 +462,31 @@ CARD_TEMPLATE = """
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    @media (max-width: 720px) {
+      .week-board {
+        min-width: 700px;
+        grid-template-columns: 30px repeat(7, minmax(104px, 1fr));
+      }
+      .week-board.single-day {
+        min-width: 0;
+        grid-template-columns: 30px minmax(0, 1fr);
+      }
+      .week-head {
+        padding: 6px 4px;
+        font-size: 0.8rem;
+      }
+      .time-cell {
+        font-size: 0.62rem;
+        padding: 3px 0;
+      }
+      .week-cell {
+        padding: 4px;
+        gap: 4px;
+      }
+      .slot-card {
+        padding: 6px 28px 6px 6px;
+      }
     }
     .slot-meta {
       margin: 0;
@@ -759,6 +812,7 @@ CARD_TEMPLATE = """
       <article class="mapping-card">
         <h3>Admin</h3>
         <div class="admin-nav">
+          <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
@@ -924,11 +978,84 @@ CARD_TEMPLATE = """
         </table>
       </article>
     </section>
+    {% elif admin_section == "analytics" %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <div class="admin-nav">
+          <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
+          <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
+          <form method="post" action="/admin/logout">
+            <button type="submit">Útskrá</button>
+          </form>
+        </div>
+      </article>
+      <article class="mapping-card">
+        <h3>Heimsóknir</h3>
+        <div class="summary">
+          <span>Samtals heimsóknir: {{ visit_totals["total_visits"] }}</span>
+          <span>Einstök client_id: {{ visit_totals["unique_clients"] }}</span>
+        </div>
+        {% if visit_summary_rows %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>client_id</th>
+              <th>Fjöldi</th>
+              <th>Fyrst séð</th>
+              <th>Síðast séð</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in visit_summary_rows %}
+            <tr>
+              <td><code>{{ row["client_id"] }}</code></td>
+              <td>{{ row["visit_count"] }}</td>
+              <td class="mapping-meta">{{ row["first_seen_utc"] }}</td>
+              <td class="mapping-meta">{{ row["last_seen_utc"] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engar heimsóknir hafa verið skráðar enn.</p>
+        {% endif %}
+      </article>
+      <article class="mapping-card">
+        <h3>Nýjustu opnanir</h3>
+        {% if recent_visit_rows %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Tími</th>
+              <th>client_id</th>
+              <th>Slóð</th>
+              <th>Query</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in recent_visit_rows %}
+            <tr>
+              <td class="mapping-meta">{{ row["visited_at_utc"] }}</td>
+              <td><code>{{ row["client_id"] }}</code></td>
+              <td>{{ row["path"] }}</td>
+              <td class="mapping-meta">{{ row["query_string"] or "" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engar nýlegar opnanir hafa verið skráðar enn.</p>
+        {% endif %}
+      </article>
+    </section>
     {% else %}
     <section class="mapping-section">
       <article class="mapping-card">
         <h3>Admin</h3>
         <div class="admin-nav">
+          <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
@@ -1047,12 +1174,12 @@ CARD_TEMPLATE = """
         <div class="now-line" id="nowLine">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
-        <div class="week-head">Tími</div>
+        <div class="week-head"><span class="week-time-head">Tími</span></div>
         {% for day in week_days %}
         <div class="week-head">{{ day }}</div>
         {% endfor %}
         {% for slot in week_slots %}
-        <div class="time-cell" data-time-label="{{ slot["time_label"] }}">{{ slot["time_label"] }}</div>
+        <div class="time-cell" data-time-label="{{ slot["time_label"] }}"><span class="time-cell-text">{{ slot["time_label"] }}</span></div>
         {% for cell in slot["cells"] %}
         <div class="week-cell">
           {% for row in cell %}
@@ -2976,6 +3103,67 @@ def load_user_size_reports(db_path: Path, client_id: str | None) -> dict[str, st
     return {str(source_uid): str(size_bin) for source_uid, size_bin in rows if source_uid and size_bin}
 
 
+def log_client_visit(db_path: Path, client_id: str, path: str, query_string: str) -> None:
+    ensure_schema(db_path)
+    clean_client_id = normalize_space(client_id)
+    if not clean_client_id:
+        return
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO client_visits (client_id, visited_at_utc, path, query_string)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                clean_client_id,
+                datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                normalize_space(path) or "/",
+                normalize_space(query_string) or None,
+            ),
+        )
+        conn.commit()
+
+
+def load_visit_summary(db_path: Path) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, int]]:
+    ensure_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        summary_rows = conn.execute(
+            """
+            SELECT
+                client_id,
+                COUNT(*) AS visit_count,
+                MIN(visited_at_utc) AS first_seen_utc,
+                MAX(visited_at_utc) AS last_seen_utc
+            FROM client_visits
+            GROUP BY client_id
+            ORDER BY last_seen_utc DESC, visit_count DESC
+            LIMIT 200
+            """
+        ).fetchall()
+        recent_rows = conn.execute(
+            """
+            SELECT client_id, visited_at_utc, path, query_string
+            FROM client_visits
+            ORDER BY visited_at_utc DESC, visit_id DESC
+            LIMIT 200
+            """
+        ).fetchall()
+        totals_row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_visits,
+                COUNT(DISTINCT client_id) AS unique_clients
+            FROM client_visits
+            """
+        ).fetchone()
+
+    summary = [dict(row) for row in summary_rows]
+    recent = [dict(row) for row in recent_rows]
+    totals = dict(totals_row or {"total_visits": 0, "unique_clients": 0})
+    return summary, recent, totals
+
+
 def build_location_review_rows(df: pd.DataFrame, query: str) -> list[dict[str, object]]:
     if df.empty:
         return []
@@ -3104,13 +3292,64 @@ def build_week_view(rows: list[dict[str, str | None]], week_days: list[str]) -> 
     ordered_slots: list[dict[str, object]] = []
     for slot_key in sorted(slots.keys(), key=lambda item: item):
         slot = slots[slot_key]
+        recurrence_keys: dict[str, dict[str, object]] = {}
+        for day in week_days:
+            for item in slot["cells"][day]:
+                recurrence_key = "|".join(
+                    [
+                        normalize_space(item.get("meeting_name_display") or item.get("meeting_name")),
+                        normalize_space(item.get("fellowship_display") or item.get("fellowship")),
+                        normalize_space(item.get("location_nickname")),
+                        normalize_space(item.get("canonical_location_text") or item.get("location_text")),
+                        normalize_space(item.get("venue_text")),
+                        normalize_space(item.get("zoom_meeting_id")),
+                        normalize_space(item.get("format")),
+                    ]
+                )
+                info = recurrence_keys.setdefault(
+                    recurrence_key,
+                    {
+                        "days": set(),
+                        "name": normalize_space(item.get("meeting_name_display") or item.get("meeting_name")),
+                        "location": normalize_space(item.get("location_nickname") or item.get("canonical_location_text") or item.get("location_text")),
+                    },
+                )
+                info["days"].add(day)
+
+        ordered_keys = [
+            item[0]
+            for item in sorted(
+                recurrence_keys.items(),
+                key=lambda entry: (
+                    -len(entry[1]["days"]),
+                    entry[1]["name"].casefold(),
+                    entry[1]["location"].casefold(),
+                    entry[0].casefold(),
+                ),
+            )
+        ]
+        key_positions = {value: index for index, value in enumerate(ordered_keys)}
         ordered_cells = []
         for day in week_days:
             cell_rows = slot["cells"][day]
             cell_rows.sort(
                 key=lambda item: (
-                    normalize_space(item.get("meeting_name")),
-                    normalize_space(item.get("location_text")),
+                    key_positions.get(
+                        "|".join(
+                            [
+                                normalize_space(item.get("meeting_name_display") or item.get("meeting_name")),
+                                normalize_space(item.get("fellowship_display") or item.get("fellowship")),
+                                normalize_space(item.get("location_nickname")),
+                                normalize_space(item.get("canonical_location_text") or item.get("location_text")),
+                                normalize_space(item.get("venue_text")),
+                                normalize_space(item.get("zoom_meeting_id")),
+                                normalize_space(item.get("format")),
+                            ]
+                        ),
+                        9999,
+                    ),
+                    normalize_space(item.get("meeting_name_display") or item.get("meeting_name")),
+                    normalize_space(item.get("location_nickname") or item.get("canonical_location_text") or item.get("location_text")),
                 )
             )
             ordered_cells.append(cell_rows)
@@ -3157,7 +3396,7 @@ def build_app(db_path: Path) -> Flask:
     def is_admin_authenticated() -> bool:
         return bool(session.get("aa_admin_ok"))
 
-    def admin_redirect_target(default_section: str = "locations") -> str:
+    def admin_redirect_target(default_section: str = "analytics") -> str:
         return f"/admin?admin_section={default_section}"
 
     def filter_df(df: pd.DataFrame, filters: dict[str, str]) -> pd.DataFrame:
@@ -3231,13 +3470,16 @@ def build_app(db_path: Path) -> Flask:
         user_size_reports = load_user_size_reports(db_path, client_id)
         df["current_size_bin"] = df["source_uid"].fillna("").astype(str).map(user_size_reports).fillna("")
         filters = request_filters()
-        admin_section = request.args.get("admin_section", "locations").strip() or "locations"
-        if admin_section not in {"locations", "church"}:
-            admin_section = "locations"
+        admin_section = request.args.get("admin_section", "analytics").strip() or "analytics"
+        if admin_section not in {"analytics", "locations", "church"}:
+            admin_section = "analytics"
         if admin_mode:
             filters["view"] = "admin"
         elif filters["view"] in {"locations", "church", "admin"}:
             filters["view"] = "week"
+        effective_client_id = client_id or secrets.token_hex(16)
+        if not admin_mode:
+            log_client_visit(db_path, effective_client_id, request.path, request.query_string.decode("utf-8", errors="ignore"))
         filtered = filter_df(df, filters)
         row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
         displayed_week_days = [filters["weekday"]] if filters["weekday"] in [day for day, _ in AA_DAY_PAGES] else [day for day, _ in AA_DAY_PAGES]
@@ -3261,6 +3503,7 @@ def build_app(db_path: Path) -> Flask:
         location_rows = build_location_review_rows(df[df["source"].fillna("") != "kirkja"], "")
         location_clusters = build_location_clusters(location_rows)
         manual_events = load_manual_events(db_path)
+        visit_summary_rows, recent_visit_rows, visit_totals = load_visit_summary(db_path)
         mapped_location_rows = [
             row for row in location_rows if int(row.get("has_location_mapping", 0)) or normalize_space(row.get("location_nickname"))
         ]
@@ -3296,6 +3539,9 @@ def build_app(db_path: Path) -> Flask:
                 location_clusters=location_clusters,
                 mapped_location_rows=mapped_location_rows,
                 manual_events=manual_events,
+                visit_summary_rows=visit_summary_rows,
+                recent_visit_rows=recent_visit_rows,
+                visit_totals=visit_totals,
                 church_edit_event=church_edit_event,
                 admin_authenticated=is_admin_authenticated(),
                 admin_section=admin_section,
@@ -3303,7 +3549,7 @@ def build_app(db_path: Path) -> Flask:
             mimetype="text/html",
         )
         if not client_id:
-            response.set_cookie(CLIENT_COOKIE_NAME, secrets.token_hex(16), max_age=365 * 24 * 60 * 60, samesite="Lax")
+            response.set_cookie(CLIENT_COOKIE_NAME, effective_client_id, max_age=365 * 24 * 60 * 60, samesite="Lax")
         return response
 
     @app.get("/")
@@ -3338,7 +3584,7 @@ def build_app(db_path: Path) -> Flask:
         redirect_query = request.form.get("redirect_query", "").strip()
         if hmac.compare_digest(password, admin_password()):
             session["aa_admin_ok"] = True
-        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=locations")
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=analytics")
         return redirect(target)
 
     @app.post("/admin/logout")
