@@ -169,7 +169,7 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                 u.zoom_meeting_id,
                 u.zoom_passcode,
                 u.zoom_url,
-                u.gender_restriction,
+                COALESCE(NULLIF(TRIM(u.gender_restriction), ''), 'Blandaður') AS gender_restriction,
                 u.access_restriction,
                 u.recurrence_hint,
                 u.notes,
