@@ -1752,6 +1752,7 @@ CARD_TEMPLATE = """
   const cards = Array.from(document.querySelectorAll('.slot-card'));
   const weekShell = document.querySelector('.week-scroll');
   if (!cards.length) return;
+  const suppressFocusOpenUntil = new WeakMap();
 
   const closeCards = (exceptCard = null) => {
     cards.forEach((card) => {
@@ -1804,11 +1805,19 @@ CARD_TEMPLATE = """
       card.classList.toggle('is-open', willOpen);
       if (willOpen) {
         positionTooltip(card);
+      } else {
+        suppressFocusOpenUntil.set(card, Date.now() + 250);
+        if (typeof card.blur === 'function') {
+          card.blur();
+        }
       }
     });
 
     card.addEventListener('mouseenter', () => positionTooltip(card));
     card.addEventListener('focusin', () => {
+      if ((suppressFocusOpenUntil.get(card) || 0) > Date.now()) {
+        return;
+      }
       card.classList.add('is-open');
       positionTooltip(card);
     });
