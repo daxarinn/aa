@@ -480,18 +480,21 @@ CARD_TEMPLATE = """
     }
     .week-cell {
       min-height: 80px;
-      padding: 6px;
+      padding: 5px;
       border-bottom: 1px solid var(--border);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
+    }
+    .week-cell.is-compact {
+      min-height: 64px;
     }
     .slot-card {
       background: white;
       border: 1px solid #e7e0d2;
       border-radius: 14px;
-      padding: 7px 32px 7px 8px;
+      padding: 7px 40px 7px 8px;
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
       position: relative;
       cursor: pointer;
@@ -598,11 +601,15 @@ CARD_TEMPLATE = """
         padding: 3px 0;
       }
       .week-cell {
-        padding: 4px;
-        gap: 4px;
+        min-height: 72px;
+        padding: 3px;
+        gap: 3px;
+      }
+      .week-cell.is-compact {
+        min-height: 56px;
       }
       .slot-card {
-        padding: 6px 28px 6px 6px;
+        padding: 6px 36px 6px 6px;
       }
     }
     .slot-meta {
@@ -1304,7 +1311,7 @@ CARD_TEMPLATE = """
         {% for slot in week_slots %}
         <div class="time-cell" data-time-label="{{ slot["time_label"] }}"><span class="time-cell-text">{{ slot["time_label"] }}</span></div>
         {% for cell in slot["cells"] %}
-        <div class="week-cell">
+        <div class="week-cell{% if slot["is_compact"] %} is-compact{% endif %}">
           {% for row in cell %}
           <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
@@ -3874,10 +3881,12 @@ def build_week_view(rows: list[dict[str, str | None]], week_days: list[str]) -> 
                 )
             )
             ordered_cells.append(cell_rows)
+        total_card_count = sum(len(cell_rows) for cell_rows in ordered_cells)
         ordered_slots.append(
             {
                 "time_label": slot["time_label"],
                 "cells": ordered_cells,
+                "is_compact": total_card_count <= 1,
             }
         )
 
