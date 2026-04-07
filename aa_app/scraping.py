@@ -42,7 +42,13 @@ from .parsing import (
     split_recurrence_hint,
     strip_zoom_meta,
 )
-from .storage import export_csv, load_dataframe, maybe_copy_to_clipboard, write_snapshot
+from .storage import (
+    export_csv,
+    load_dataframe,
+    maybe_copy_to_clipboard,
+    normalized_location_key,
+    write_snapshot,
+)
 
 def source_priority(record: MeetingRecord) -> int:
     priorities = {
