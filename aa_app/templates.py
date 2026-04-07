@@ -181,6 +181,12 @@ CARD_TEMPLATE = """
       outline-offset: 1px;
       box-shadow: inset 0 0 0 1px rgba(212, 159, 36, 0.18), 0 12px 28px rgba(15, 23, 42, 0.05);
     }
+    .card.is-alanon,
+    .slot-card.is-alanon {
+      background: #fff2c9;
+      border-color: #ddc77f;
+      box-shadow: inset 2px 0 0 #c79e1b, 0 12px 28px rgba(15, 23, 42, 0.05);
+    }
     .card.is-remote,
     .slot-card.is-remote {
       background: #dff3e2;
@@ -210,6 +216,24 @@ CARD_TEMPLATE = """
       background: #dcecff;
       border-color: #8fb2de;
       box-shadow: inset 2px 0 0 #2f72c8, 0 12px 28px rgba(15, 23, 42, 0.05);
+    }
+    .card.is-alanon.is-remote,
+    .slot-card.is-alanon.is-remote {
+      background: linear-gradient(135deg, #fff2c9 0 50%, #dff3e2 50% 100%);
+      border-color: #c8c391;
+      box-shadow: inset 2px 0 0 #c79e1b, inset -2px 0 0 #2f8f46, 0 12px 28px rgba(15, 23, 42, 0.05);
+    }
+    .card.is-alanon.is-women,
+    .slot-card.is-alanon.is-women {
+      background: linear-gradient(135deg, #fff2c9 0 50%, #ffdbe7 50% 100%);
+      border-color: #ddbe93;
+      box-shadow: inset 2px 0 0 #c79e1b, inset -2px 0 0 #c83d6f, 0 12px 28px rgba(15, 23, 42, 0.05);
+    }
+    .card.is-alanon.is-men,
+    .slot-card.is-alanon.is-men {
+      background: linear-gradient(135deg, #fff2c9 0 50%, #dcecff 50% 100%);
+      border-color: #cbbd8c;
+      box-shadow: inset 2px 0 0 #c79e1b, inset -2px 0 0 #2f72c8, 0 12px 28px rgba(15, 23, 42, 0.05);
     }
     .topline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
     .time { font-weight: 700; font-size: 1.05rem; color: var(--accent); }
@@ -1281,7 +1305,7 @@ CARD_TEMPLATE = """
         {% for cell in slot["cells"] %}
         <div class="week-cell{% if slot["is_compact"] %} is-compact{% endif %}">
           {% for row in cell %}
-          <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
+          <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
             <div class="slot-title-row">
               <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
@@ -1320,7 +1344,7 @@ CARD_TEMPLATE = """
     {% else %}
     <section class="grid">
       {% for row in rows %}
-      <article class="card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" data-meeting-id="{{ row["source_uid"] }}">
+      <article class="card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" data-meeting-id="{{ row["source_uid"] }}">
         <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
         <div class="topline">
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
