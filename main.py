@@ -205,6 +205,14 @@ CARD_TEMPLATE = """
       box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
     }
     h1 { font-size: clamp(1.6rem, 3.2vw, 2.4rem); margin: 0 0 6px; line-height: 1.05; }
+    h1 a {
+      color: inherit;
+      text-decoration: none;
+    }
+    h1 a:hover,
+    h1 a:focus-visible {
+      text-decoration: underline;
+    }
     .meta { color: var(--muted); font-size: 0.95rem; margin: 0; }
     .filters {
       display: grid;
@@ -371,6 +379,11 @@ CARD_TEMPLATE = """
       padding: 4px 7px;
       border-radius: 999px;
     }
+    .pill.is-live-now {
+      background: #fef3c7;
+      border-color: #f3d27a;
+      color: #7c2d12;
+    }
     h2 { margin: 0 0 6px; font-size: 1.2rem; }
     .line { margin: 3px 0; color: var(--muted); font-size: 0.93rem; }
     .line strong { color: var(--ink); }
@@ -428,6 +441,15 @@ CARD_TEMPLATE = """
       font-size: 0.88rem;
       font-weight: 700;
     }
+    .week-day-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 1rem;
+      line-height: 1.15;
+      min-height: 44px;
+    }
     .week-board > .week-head:first-child {
       left: 0;
       z-index: 6;
@@ -450,8 +472,7 @@ CARD_TEMPLATE = """
       justify-content: center;
       text-align: center;
     }
-    .time-cell-text,
-    .week-time-head {
+    .time-cell-text {
       writing-mode: vertical-rl;
       transform: rotate(180deg);
       white-space: nowrap;
@@ -502,6 +523,12 @@ CARD_TEMPLATE = """
     .favorite-toggle:hover {
       border-color: #c8b27d;
     }
+    .slot-title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
     .slot-title {
       margin: 0;
       font-size: 0.9rem;
@@ -509,6 +536,36 @@ CARD_TEMPLATE = """
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #dc2626;
+      box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+      flex: 0 0 auto;
+    }
+    .live-dot.is-blinking {
+      animation: live-dot-pulse 1.35s ease-out infinite;
+    }
+    @keyframes live-dot-pulse {
+      0% {
+        opacity: 0.95;
+        transform: scale(0.92);
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+      }
+      55% {
+        opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.08);
+      }
+      100% {
+        opacity: 0.5;
+        transform: scale(0.92);
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+      }
     }
     .slot-summary {
       margin: 2px 0 0;
@@ -531,6 +588,10 @@ CARD_TEMPLATE = """
       .week-head {
         padding: 6px 4px;
         font-size: 0.8rem;
+      }
+      .week-day-head {
+        font-size: 0.92rem;
+        min-height: 40px;
       }
       .time-cell {
         font-size: 0.62rem;
@@ -741,7 +802,7 @@ CARD_TEMPLATE = """
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1>Fundaskrá</h1>
+      <h1><a href="/">Fundaskrá</a></h1>
       <p class="meta">AA, fjarfundir og kirkjusamkomur. Uppfært {{ scraped_at }}</p>
       <div class="filter-panel-header">
         <button type="button" class="filter-toggle" id="filterToggle" aria-expanded="false">Sýna síur</button>
@@ -1236,9 +1297,9 @@ CARD_TEMPLATE = """
         <div class="now-line" id="nowLine">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
-        <div class="week-head"><span class="week-time-head">Tími</span></div>
+        <div class="week-head" aria-hidden="true"></div>
         {% for day in week_days %}
-        <div class="week-head">{{ day }}</div>
+        <div class="week-head week-day-head">{{ day }}</div>
         {% endfor %}
         {% for slot in week_slots %}
         <div class="time-cell" data-time-label="{{ slot["time_label"] }}"><span class="time-cell-text">{{ slot["time_label"] }}</span></div>
@@ -1247,7 +1308,10 @@ CARD_TEMPLATE = """
           {% for row in cell %}
           <article class="slot-card{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
-            <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
+            <div class="slot-title-row">
+              <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
+              {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
+            </div>
             <p class="slot-summary">{{ row["summary_display"] }}</p>
             <div class="slot-tooltip">
               <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
@@ -1285,6 +1349,7 @@ CARD_TEMPLATE = """
         <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
         <div class="topline">
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
+          {% if row["is_live_now"] %}<span class="pill is-live-now">Í gangi núna</span>{% endif %}
           <span class="pill">{{ row["source"] }}</span>
           <span class="pill">{{ row["fellowship_display"] }}</span>
           {% if row["gender_restriction"] %}<span class="pill">{{ row["gender_restriction"] }}</span>{% endif %}
@@ -1958,8 +2023,25 @@ def build_size_display(avg_size_bin: object | None, report_count: object | None)
     return f"Stærð {label}"
 
 
+def is_meeting_live_now(row: dict[str, object], now_dt: datetime | None = None) -> bool:
+    current_dt = now_dt or datetime.now(ZoneInfo("Atlantic/Reykjavik"))
+    try:
+        weekday_order = int(row.get("weekday_order") or 0)
+    except (TypeError, ValueError):
+        return False
+    if weekday_order != current_dt.isoweekday():
+        return False
+    start_parts = parse_clock_time(row.get("start_time"))
+    if start_parts is None:
+        return False
+    start_minutes = (start_parts[0] * 60) + start_parts[1]
+    now_minutes = (current_dt.hour * 60) + current_dt.minute
+    return start_minutes <= now_minutes < (start_minutes + 60)
+
+
 def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     sanitized_rows: list[dict[str, object]] = []
+    current_dt = datetime.now(ZoneInfo("Atlantic/Reykjavik"))
     for row in rows:
         clean_row: dict[str, object] = {}
         for key, value in row.items():
@@ -1970,6 +2052,7 @@ def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, ob
             clean_row["zoom_url"] = None
         clean_row["summary_display"] = build_summary_display(clean_row)
         clean_row["size_display"] = build_size_display(clean_row.get("avg_size_bin"), clean_row.get("size_report_count"))
+        clean_row["is_live_now"] = is_meeting_live_now(clean_row, current_dt)
         sanitized_rows.append(clean_row)
     return sanitized_rows
 
