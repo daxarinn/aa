@@ -36,6 +36,13 @@ CARD_TEMPLATE = """
       backdrop-filter: blur(8px);
       box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
     }
+    .hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
     h1 { font-size: clamp(1.6rem, 3.2vw, 2.4rem); margin: 0 0 6px; line-height: 1.05; }
     h1 a {
       color: inherit;
@@ -80,7 +87,7 @@ CARD_TEMPLATE = """
       margin-top: 6px;
     }
     .filter-panel-header {
-      margin-top: 10px;
+      margin-top: 0;
     }
     .filter-toggle {
       border-radius: 999px;
@@ -91,7 +98,10 @@ CARD_TEMPLATE = """
       color: var(--ink);
       cursor: pointer;
     }
-    .filters.is-collapsed {
+    .filter-panel {
+      margin-top: 10px;
+    }
+    .filter-panel.is-collapsed {
       display: none;
     }
     .view-switch {
@@ -418,6 +428,9 @@ CARD_TEMPLATE = """
       text-overflow: ellipsis;
     }
     @media (max-width: 720px) {
+      .hero-top {
+        align-items: stretch;
+      }
       :root {
         --week-time-column-width: 30px;
         --week-tooltip-tailroom: 180px;
@@ -662,11 +675,14 @@ CARD_TEMPLATE = """
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1><a href="/">Fundaskrá</a></h1>
-      <p class="meta">AA, fjarfundir og kirkjusamkomur. Uppfært {{ scraped_at }}</p>
-      <div class="filter-panel-header">
-        <button type="button" class="filter-toggle" id="filterToggle" aria-expanded="false">Sýna síur</button>
+      <div class="hero-top">
+        <h1><a href="/">Fundaskrá</a></h1>
+        <div class="filter-panel-header">
+          <button type="button" class="filter-toggle" id="filterToggle" aria-expanded="false">Síur og meira</button>
+        </div>
       </div>
+      <div class="filter-panel" id="filterPanel">
+      <p class="meta">AA, fjarfundir og kirkjusamkomur. Uppfært {{ scraped_at }}</p>
       <form class="filters" method="get" id="filtersForm">
         <input type="hidden" name="view" value="{{ filters["view"] }}">
         <div class="filter-field">
@@ -776,6 +792,7 @@ CARD_TEMPLATE = """
         <button type="button" id="favoritesCodeCopy">Afrita favorites-kóða</button>
         <button type="button" id="favoritesCodeImport">Líma favorites-kóða</button>
         <span class="calendar-status" id="favoritesCalendarStatus" aria-live="polite"></span>
+      </div>
       </div>
     </section>
     {% if filters["view"] == "admin" %}
@@ -1507,19 +1524,20 @@ CARD_TEMPLATE = """
   }
 
   const filtersForm = document.getElementById('filtersForm');
+  const filterPanel = document.getElementById('filterPanel');
   const clearFiltersLink = document.getElementById('clearFiltersLink');
   const filterToggle = document.getElementById('filterToggle');
   const setFiltersCollapsed = (collapsed) => {
-    if (!filtersForm || !filterToggle) return;
-    filtersForm.classList.toggle('is-collapsed', collapsed);
+    if (!filterPanel || !filterToggle) return;
+    filterPanel.classList.toggle('is-collapsed', collapsed);
     filterToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    filterToggle.textContent = collapsed ? 'Sýna síur' : 'Fela síur';
+    filterToggle.textContent = collapsed ? 'Síur og meira' : 'Fela síur og meira';
   };
 
-  if (filtersForm && filterToggle) {
+  if (filterPanel && filterToggle) {
     setFiltersCollapsed(true);
     filterToggle.addEventListener('click', () => {
-      setFiltersCollapsed(!filtersForm.classList.contains('is-collapsed'));
+      setFiltersCollapsed(!filterPanel.classList.contains('is-collapsed'));
     });
   }
 
