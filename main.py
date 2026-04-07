@@ -11,7 +11,7 @@ import secrets
 import sqlite3
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import unquote, urlencode
@@ -62,6 +62,16 @@ DEFAULT_CSV_PATH = Path("exports/meetings_latest.csv")
 FILTERS_COOKIE_NAME = "aa_filters"
 FAVORITES_COOKIE_NAME = "aa_favorites"
 CLIENT_COOKIE_NAME = "aa_client_id"
+DEFAULT_CALENDAR_EVENT_DURATION = timedelta(hours=1)
+ICAL_BYDAY_BY_ORDER = {
+    1: "MO",
+    2: "TU",
+    3: "WE",
+    4: "TH",
+    5: "FR",
+    6: "SA",
+    7: "SU",
+}
 SIZE_BIN_OPTIONS = [
     {"value": "2-9", "label": "2-9", "midpoint": 5.5},
     {"value": "10-19", "label": "10-19", "midpoint": 14.5},
@@ -149,6 +159,13 @@ CREATE TABLE IF NOT EXISTS client_visits (
     visited_at_utc TEXT NOT NULL,
     path TEXT NOT NULL,
     query_string TEXT
+);
+
+CREATE TABLE IF NOT EXISTS favorite_calendar_subscriptions (
+    subscription_token TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL UNIQUE,
+    favorite_ids_json TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
 );
 """
 
@@ -257,6 +274,40 @@ CARD_TEMPLATE = """
       color: white;
       border-color: var(--accent);
     }
+    .calendar-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      align-items: center;
+    }
+    .calendar-tools a,
+    .calendar-tools button {
+      text-decoration: none;
+      border: 1px solid var(--border);
+      color: var(--ink);
+      background: white;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+    .calendar-tools a.is-disabled,
+    .calendar-tools button.is-disabled,
+    .calendar-tools button:disabled {
+      opacity: 0.55;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+    .calendar-status {
+      color: var(--muted);
+      font-size: 0.88rem;
+      min-height: 1.2em;
+    }
+    .calendar-status.is-error {
+      color: #991b1b;
+    }
     .summary { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .summary span {
       padding: 5px 8px;
@@ -346,11 +397,16 @@ CARD_TEMPLATE = """
     }
     .week-shell {
       margin-top: 16px;
-      overflow-x: auto;
       border: 1px solid var(--border);
       border-radius: 16px;
       background: rgba(255,255,255,0.55);
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+      overflow: visible;
+    }
+    .week-scroll {
+      overflow-x: auto;
+      overflow-y: visible;
+      border-radius: 16px;
     }
     .week-board {
       min-width: 920px;
@@ -793,6 +849,11 @@ CARD_TEMPLATE = """
         <a href="/?{{ list_query_string }}" class="{% if filters["view"] == "list" %}active{% endif %}">Línuleg sýn</a>
         <a href="/?{{ week_query_string }}" class="{% if filters["view"] == "week" %}active{% endif %}">Vikusýn</a>
       </div>
+      <div class="calendar-tools">
+        <a href="/favorites.ics" id="favoritesCalendarDownload">Dagatal (.ics)</a>
+        <button type="button" id="favoritesCalendarSubscribe">Afrita áskriftarslóð</button>
+        <span class="calendar-status" id="favoritesCalendarStatus" aria-live="polite"></span>
+      </div>
     </section>
     {% if filters["view"] == "admin" %}
     {% if not admin_authenticated %}
@@ -1169,7 +1230,8 @@ CARD_TEMPLATE = """
       Engir fundir pössuðu við valdar síur.
     </section>
     {% elif filters["view"] == "week" %}
-    <section class="week-shell" data-scroll-restore="week-shell">
+    <section class="week-shell">
+      <div class="week-scroll" data-scroll-restore="week-shell">
       <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
         <div class="now-line" id="nowLine">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
@@ -1213,6 +1275,7 @@ CARD_TEMPLATE = """
         </div>
         {% endfor %}
         {% endfor %}
+      </div>
       </div>
     </section>
     {% else %}
@@ -1312,6 +1375,50 @@ CARD_TEMPLATE = """
       .filter((value) => typeof value === 'string' && value.trim())
       .slice(0, maxFavorites)
   );
+  const favoritesCalendarDownload = document.getElementById('favoritesCalendarDownload');
+  const favoritesCalendarSubscribe = document.getElementById('favoritesCalendarSubscribe');
+  const favoritesCalendarStatus = document.getElementById('favoritesCalendarStatus');
+
+  const setCalendarStatus = (message, isError = false) => {
+    if (!favoritesCalendarStatus) return;
+    favoritesCalendarStatus.textContent = message || '';
+    favoritesCalendarStatus.classList.toggle('is-error', Boolean(message) && isError);
+  };
+
+  const updateCalendarActions = () => {
+    const hasFavorites = favoriteSet.size > 0;
+    if (favoritesCalendarDownload) {
+      favoritesCalendarDownload.classList.toggle('is-disabled', !hasFavorites);
+      favoritesCalendarDownload.setAttribute('aria-disabled', hasFavorites ? 'false' : 'true');
+      favoritesCalendarDownload.setAttribute('title', hasFavorites ? 'Sækja dagatal fyrir uppáhaldsfundi' : 'Veldu fyrst uppáhaldsfundi');
+    }
+    if (favoritesCalendarSubscribe) {
+      favoritesCalendarSubscribe.disabled = !hasFavorites;
+      favoritesCalendarSubscribe.classList.toggle('is-disabled', !hasFavorites);
+      favoritesCalendarSubscribe.setAttribute('title', hasFavorites ? 'Afrita áskriftarslóð fyrir uppáhaldsdagatal' : 'Veldu fyrst uppáhaldsfundi');
+    }
+    if (!hasFavorites) {
+      setCalendarStatus('Veldu fyrst uppáhaldsfundi til að búa til dagatal.');
+    } else if ((favoritesCalendarStatus?.textContent || '').startsWith('Veldu fyrst')) {
+      setCalendarStatus('');
+    }
+  };
+
+  const copyText = async (value) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const helper = document.createElement('textarea');
+    helper.value = value;
+    helper.setAttribute('readonly', 'readonly');
+    helper.style.position = 'fixed';
+    helper.style.top = '-999px';
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand('copy');
+    helper.remove();
+  };
 
   const syncFavoriteButtons = () => {
     document.querySelectorAll('[data-meeting-id]').forEach((node) => {
@@ -1327,6 +1434,7 @@ CARD_TEMPLATE = """
         node.classList.toggle('is-favorite', isFavorite);
       }
     });
+    updateCalendarActions();
   };
 
   const persistFavorites = () => {
@@ -1338,6 +1446,9 @@ CARD_TEMPLATE = """
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      document.querySelectorAll('.slot-card.is-open').forEach((card) => {
+        card.classList.remove('is-open');
+      });
       const meetingId = button.getAttribute('data-meeting-id') || '';
       if (!meetingId) return;
       if (favoriteSet.has(meetingId)) {
@@ -1348,6 +1459,43 @@ CARD_TEMPLATE = """
       persistFavorites();
     });
   });
+
+  if (favoritesCalendarDownload) {
+    favoritesCalendarDownload.addEventListener('click', (event) => {
+      if (favoriteSet.size > 0) return;
+      event.preventDefault();
+      setCalendarStatus('Veldu fyrst uppáhaldsfundi til að búa til dagatal.');
+    });
+  }
+
+  if (favoritesCalendarSubscribe) {
+    favoritesCalendarSubscribe.addEventListener('click', async () => {
+      if (!favoriteSet.size) {
+        setCalendarStatus('Veldu fyrst uppáhaldsfundi til að búa til dagatal.');
+        return;
+      }
+      favoritesCalendarSubscribe.disabled = true;
+      setCalendarStatus('Bý til áskriftarslóð...');
+      try {
+        const response = await fetch('/favorites-calendar-url', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.url) {
+          throw new Error(payload.error || 'calendar-url-failed');
+        }
+        await copyText(payload.url);
+        setCalendarStatus('Áskriftarslóð afrituð. Ef þú breytir uppáhaldsfundum þarftu að afrita hana aftur.');
+      } catch (_error) {
+        setCalendarStatus('Tókst ekki að búa til eða afrita áskriftarslóð.', true);
+      } finally {
+        updateCalendarActions();
+      }
+    });
+  }
 
   const filtersForm = document.getElementById('filtersForm');
   const clearFiltersLink = document.getElementById('clearFiltersLink');
@@ -1457,7 +1605,7 @@ CARD_TEMPLATE = """
 
 (function() {
   const cards = Array.from(document.querySelectorAll('.slot-card'));
-  const weekShell = document.querySelector('.week-shell');
+  const weekShell = document.querySelector('.week-scroll');
   if (!cards.length) return;
 
   const closeCards = (exceptCard = null) => {
@@ -2810,6 +2958,296 @@ def read_json_cookie(name: str) -> dict[str, object] | list[object] | None:
         return None
 
 
+def normalized_favorite_ids(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    seen: set[str] = set()
+    favorite_ids: list[str] = []
+    for value in values:
+        clean_value = normalize_space(value)
+        if not clean_value or clean_value in seen:
+            continue
+        seen.add(clean_value)
+        favorite_ids.append(clean_value)
+    return favorite_ids
+
+
+def favorite_ids_from_cookie() -> list[str]:
+    return normalized_favorite_ids(read_json_cookie(FAVORITES_COOKIE_NAME) or [])
+
+
+def calendar_anchor_date_for_weekday(weekday_order: object | None) -> date | None:
+    try:
+        clean_weekday_order = int(weekday_order or 0)
+    except (TypeError, ValueError):
+        return None
+    if clean_weekday_order not in range(1, 8):
+        return None
+    local_today = datetime.now(ZoneInfo("Atlantic/Reykjavik")).date()
+    week_start = local_today - timedelta(days=local_today.isoweekday() - 1)
+    return week_start + timedelta(days=clean_weekday_order - 1)
+
+
+def parse_clock_time(value: object | None) -> tuple[int, int] | None:
+    match = re.match(r"^(\d{1,2}):(\d{2})$", normalize_space(value))
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    if hour not in range(0, 24) or minute not in range(0, 60):
+        return None
+    return hour, minute
+
+
+def iso_to_ical_utc(value: object | None) -> str | None:
+    clean_value = normalize_space(value)
+    if not clean_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(clean_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def ical_escape(value: object | None) -> str:
+    text = normalize_space(value)
+    if not text:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "\\n")
+        .replace(";", r"\;")
+        .replace(",", r"\,")
+    )
+
+
+def fold_ical_line(line: str) -> str:
+    if len(line) <= 75:
+        return line
+    chunks = [line[index:index + 73] for index in range(0, len(line), 73)]
+    return "\r\n ".join(chunks)
+
+
+def build_calendar_location(row: dict[str, object]) -> str:
+    candidates = [
+        row.get("location_nickname"),
+        row.get("canonical_location_text"),
+        row.get("location_text"),
+        row.get("venue_text"),
+    ]
+    for candidate in candidates:
+        clean_candidate = normalize_space(candidate)
+        if clean_candidate:
+            return clean_candidate
+    if normalize_space(row.get("format")) == "Fjarfundur":
+        return "Á netinu"
+    return ""
+
+
+def build_calendar_description(row: dict[str, object]) -> str:
+    title = normalize_space(row.get("meeting_name_display") or row.get("meeting_name"))
+    summary = normalize_space(row.get("summary_display"))
+    lines: list[str] = []
+    if summary and summary.casefold() != title.casefold():
+        lines.append(summary)
+    for label, value in [
+        ("Undirtitill", row.get("subtitle")),
+        ("Félag", row.get("fellowship_display") or row.get("fellowship")),
+        ("Format", row.get("format")),
+        ("Aðgangur", row.get("access_restriction")),
+        ("Kyn", row.get("gender_restriction")),
+        ("Glósur", row.get("notes")),
+        ("Zoom ID", row.get("zoom_meeting_id")),
+        ("Passcode", row.get("zoom_passcode")),
+        ("Uppruni", row.get("source_page_url")),
+    ]:
+        clean_value = normalize_space(value)
+        if clean_value:
+            lines.append(f"{label}: {clean_value}")
+    return "\n".join(lines)
+
+
+def build_calendar_event_bounds(row: dict[str, object]) -> tuple[datetime, datetime] | None:
+    weekday_date = calendar_anchor_date_for_weekday(row.get("weekday_order"))
+    if weekday_date is None:
+        return None
+    start_parts = parse_clock_time(row.get("start_time")) or parse_clock_time(row.get("time_display"))
+    if start_parts is None:
+        return None
+    start_dt = datetime(
+        weekday_date.year,
+        weekday_date.month,
+        weekday_date.day,
+        start_parts[0],
+        start_parts[1],
+        tzinfo=timezone.utc,
+    )
+    end_parts = parse_clock_time(row.get("end_time"))
+    if end_parts is None:
+        return start_dt, start_dt + DEFAULT_CALENDAR_EVENT_DURATION
+    end_dt = datetime(
+        weekday_date.year,
+        weekday_date.month,
+        weekday_date.day,
+        end_parts[0],
+        end_parts[1],
+        tzinfo=timezone.utc,
+    )
+    if end_dt <= start_dt:
+        end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
+def build_favorites_calendar_ics(
+    rows: list[dict[str, object]],
+    *,
+    calendar_name: str,
+    calendar_url: str | None = None,
+) -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AA Fundaskra//Favorites Calendar//IS",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{ical_escape(calendar_name)}",
+        "X-PUBLISHED-TTL:PT6H",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT6H",
+    ]
+    if calendar_url:
+        lines.append(f"URL:{ical_escape(calendar_url)}")
+
+    for row in rows:
+        try:
+            weekday_code = ICAL_BYDAY_BY_ORDER.get(int(row.get("weekday_order") or 0))
+        except (TypeError, ValueError):
+            weekday_code = None
+        event_bounds = build_calendar_event_bounds(row)
+        source_uid = normalize_space(row.get("source_uid"))
+        if not weekday_code or event_bounds is None or not source_uid:
+            continue
+        start_dt, end_dt = event_bounds
+        lines.extend(
+            [
+                "BEGIN:VEVENT",
+                f"UID:{ical_escape(source_uid)}@aa-fundaskra",
+                f"DTSTAMP:{timestamp}",
+                f"LAST-MODIFIED:{iso_to_ical_utc(row.get('scraped_at_utc')) or timestamp}",
+                f"SUMMARY:{ical_escape(row.get('meeting_name_display') or row.get('meeting_name') or 'AA fundur')}",
+                f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}",
+                f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}",
+                f"RRULE:FREQ=WEEKLY;BYDAY={weekday_code}",
+                "STATUS:CONFIRMED",
+                "TRANSP:OPAQUE",
+            ]
+        )
+        location = build_calendar_location(row)
+        if location:
+            lines.append(f"LOCATION:{ical_escape(location)}")
+        description = build_calendar_description(row)
+        if description:
+            lines.append(f"DESCRIPTION:{ical_escape(description)}")
+        source_url = normalize_space(row.get("source_page_url"))
+        if source_url and re.match(r"^https?://", source_url, re.I):
+            lines.append(f"URL:{ical_escape(source_url)}")
+        lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(fold_ical_line(line) for line in lines) + "\r\n"
+
+
+def load_favorite_calendar_rows(db_path: Path, favorite_ids: list[str]) -> list[dict[str, object]]:
+    clean_favorite_ids = normalized_favorite_ids(favorite_ids)
+    if not clean_favorite_ids:
+        return []
+    df = load_dataframe(db_path)
+    if df.empty:
+        return []
+    filtered = df[df["source_uid"].fillna("").astype(str).isin(set(clean_favorite_ids))].copy()
+    if filtered.empty:
+        return []
+    filtered = filtered.sort_values(
+        by=["weekday_order", "start_time", "time_display", "meeting_name", "source_uid"],
+        na_position="last",
+    )
+    return sanitize_rows_for_render(filtered.to_dict(orient="records"))
+
+
+def upsert_favorite_calendar_subscription(db_path: Path, client_id: str, favorite_ids: list[str]) -> str:
+    ensure_schema(db_path)
+    clean_client_id = normalize_space(client_id)
+    if not clean_client_id:
+        raise ValueError("client_id vantar")
+    favorite_ids_json = json.dumps(normalized_favorite_ids(favorite_ids), ensure_ascii=False, separators=(",", ":"))
+    updated_at_utc = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        existing_row = conn.execute(
+            "SELECT subscription_token FROM favorite_calendar_subscriptions WHERE client_id = ?",
+            (clean_client_id,),
+        ).fetchone()
+        if existing_row and existing_row[0]:
+            token = str(existing_row[0])
+            conn.execute(
+                """
+                UPDATE favorite_calendar_subscriptions
+                SET favorite_ids_json = ?, updated_at_utc = ?
+                WHERE client_id = ?
+                """,
+                (favorite_ids_json, updated_at_utc, clean_client_id),
+            )
+            conn.commit()
+            return token
+
+        for _attempt in range(5):
+            token = secrets.token_urlsafe(24)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO favorite_calendar_subscriptions (
+                        subscription_token, client_id, favorite_ids_json, updated_at_utc
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (token, clean_client_id, favorite_ids_json, updated_at_utc),
+                )
+                conn.commit()
+                return token
+            except sqlite3.IntegrityError:
+                continue
+    raise RuntimeError("Tókst ekki að búa til calendar token")
+
+
+def load_favorite_calendar_subscription(db_path: Path, subscription_token: str) -> dict[str, object] | None:
+    ensure_schema(db_path)
+    clean_token = normalize_space(subscription_token)
+    if not clean_token:
+        return None
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT client_id, favorite_ids_json, updated_at_utc
+            FROM favorite_calendar_subscriptions
+            WHERE subscription_token = ?
+            """,
+            (clean_token,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        favorite_ids_payload = json.loads(row[1])
+    except (TypeError, json.JSONDecodeError):
+        favorite_ids_payload = []
+    return {
+        "client_id": normalize_space(row[0]),
+        "favorite_ids": normalized_favorite_ids(favorite_ids_payload),
+        "updated_at_utc": normalize_space(row[2]),
+    }
+
+
 def request_filters() -> dict[str, str]:
     clear_filters = request.args.get("clear_filters", "").strip() == "1"
     saved_filters = {} if clear_filters else (read_json_cookie(FILTERS_COOKIE_NAME) or {})
@@ -3577,6 +4015,51 @@ def build_app(db_path: Path) -> Flask:
             mimetype="text/csv",
             headers={"Content-Disposition": "attachment; filename=meetings_filtered.csv"},
         )
+
+    @app.get("/favorites.ics")
+    def favorites_calendar_download():
+        subscription_token = request.args.get("token", "").strip()
+        favorite_ids: list[str]
+        calendar_name = "AA uppáhaldsfundir"
+        headers = {"Cache-Control": "no-store"}
+        if subscription_token:
+            subscription = load_favorite_calendar_subscription(db_path, subscription_token)
+            if subscription is None:
+                return Response("Calendar fannst ekki", status=404, mimetype="text/plain")
+            favorite_ids = list(subscription.get("favorite_ids", []))
+            calendar_url = request.url_root.rstrip("/") + f"/favorites.ics?{urlencode({'token': subscription_token})}"
+            headers["Content-Disposition"] = "inline; filename=aa-favorites-feed.ics"
+        else:
+            favorite_ids = favorite_ids_from_cookie()
+            calendar_url = None
+            headers["Content-Disposition"] = "attachment; filename=aa-favorites.ics"
+            headers["Vary"] = "Cookie"
+        rows = load_favorite_calendar_rows(db_path, favorite_ids)
+        ical_text = build_favorites_calendar_ics(rows, calendar_name=calendar_name, calendar_url=calendar_url)
+        return Response(ical_text, content_type="text/calendar; charset=utf-8", headers=headers)
+
+    @app.get("/favorites-calendar-url")
+    def favorites_calendar_url():
+        favorite_ids = favorite_ids_from_cookie()
+        if not favorite_ids:
+            return Response(
+                json.dumps({"error": "no-favorites"}, ensure_ascii=False),
+                status=400,
+                mimetype="application/json",
+                headers={"Cache-Control": "no-store", "Vary": "Cookie"},
+            )
+        client_id = normalize_space(request.cookies.get(CLIENT_COOKIE_NAME))
+        effective_client_id = client_id or secrets.token_hex(16)
+        subscription_token = upsert_favorite_calendar_subscription(db_path, effective_client_id, favorite_ids)
+        calendar_url = request.url_root.rstrip("/") + f"/favorites.ics?{urlencode({'token': subscription_token})}"
+        response = Response(
+            json.dumps({"url": calendar_url, "count": len(favorite_ids)}, ensure_ascii=False),
+            mimetype="application/json",
+            headers={"Cache-Control": "no-store", "Vary": "Cookie"},
+        )
+        if not client_id:
+            response.set_cookie(CLIENT_COOKIE_NAME, effective_client_id, max_age=365 * 24 * 60 * 60, samesite="Lax")
+        return response
 
     @app.post("/admin/login")
     def admin_login():
