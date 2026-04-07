@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlencode
 import pandas as pd
 from flask import Flask, Response, redirect, request, session
 
+from .admin_tools import build_duplicate_review_rows
 from .config import (
     AA_DAY_PAGES,
     CLIENT_COOKIE_NAME,
@@ -380,7 +381,7 @@ def build_app(db_path: Path) -> Flask:
         df["current_size_bin"] = df["source_uid"].fillna("").astype(str).map(user_size_reports).fillna("")
         filters = request_filters()
         admin_section = request.args.get("admin_section", "analytics").strip() or "analytics"
-        if admin_section not in {"analytics", "locations", "church"}:
+        if admin_section not in {"analytics", "locations", "duplicates", "church"}:
             admin_section = "analytics"
         if admin_mode:
             filters["view"] = "admin"
@@ -407,10 +408,12 @@ def build_app(db_path: Path) -> Flask:
         week_query_string = build_query_string(filters, overrides={"view": "week"})
         admin_query_string = build_query_string(filters, overrides={"admin_section": admin_section}, exclude={"view"})
         locations_query_string = build_query_string(filters, overrides={"admin_section": "locations"}, exclude={"view"})
+        duplicates_query_string = build_query_string(filters, overrides={"admin_section": "duplicates"}, exclude={"view"})
         church_query_string = build_query_string(filters, overrides={"admin_section": "church"}, exclude={"view"})
         current_query_string = request.query_string.decode("utf-8", errors="ignore").strip()
         location_rows = build_location_review_rows(df[df["source"].fillna("") != "kirkja"], "")
         location_clusters = build_location_clusters(location_rows)
+        duplicate_review_rows = build_duplicate_review_rows(df, max_pairs=80) if admin_mode and admin_section == "duplicates" else []
         manual_events = load_manual_events(db_path)
         visit_summary_rows, recent_visit_rows, visit_totals = load_visit_summary(db_path)
         mapped_location_rows = [
@@ -438,6 +441,7 @@ def build_app(db_path: Path) -> Flask:
                 week_query_string=week_query_string,
                 admin_query_string=admin_query_string,
                 locations_query_string=locations_query_string,
+                duplicates_query_string=duplicates_query_string,
                 church_query_string=church_query_string,
                 current_query_string=current_query_string,
                 default_weekday=current_iceland_weekday(),
@@ -446,6 +450,7 @@ def build_app(db_path: Path) -> Flask:
                 client_cookie_name=CLIENT_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
+                duplicate_review_rows=duplicate_review_rows,
                 mapped_location_rows=mapped_location_rows,
                 manual_events=manual_events,
                 visit_summary_rows=visit_summary_rows,

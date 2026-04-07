@@ -637,6 +637,19 @@ CARD_TEMPLATE = """
       flex-wrap: wrap;
       margin-top: 4px;
     }
+    .match-reasons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .match-reasons span {
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: var(--pill);
+      color: #0f172a;
+      font-size: 0.8rem;
+    }
     .size-form {
       margin-top: 6px;
       display: grid;
@@ -815,6 +828,7 @@ CARD_TEMPLATE = """
         <div class="admin-nav">
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -986,6 +1000,7 @@ CARD_TEMPLATE = """
         <div class="admin-nav">
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -1051,6 +1066,84 @@ CARD_TEMPLATE = """
         {% endif %}
       </article>
     </section>
+    {% elif admin_section == "duplicates" %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <div class="admin-nav">
+          <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
+          <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
+          <form method="post" action="/admin/logout">
+            <button type="submit">Útskrá</button>
+          </form>
+        </div>
+      </article>
+      <article class="mapping-card">
+        <h3>Mögulegar tvítektir á fundum</h3>
+        <p class="mapping-meta">Þessi listi sýnir sterkustu fuzzy vísbendingarnar um að sami fundur sé skráður frá fleiri en einni síðu. Leitað er að sama vikudegi, sama eða mjög nálægum tíma og svipuðu heiti ásamt sama stað eða sama Zoom auðkenni.</p>
+        <div class="summary">
+          <span>{{ duplicate_review_rows|length }} pör fundust</span>
+          <span>Aðeins mismunandi source-ar</span>
+          <span>Hámark 80 pör</span>
+        </div>
+        {% if duplicate_review_rows %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Líkur</th>
+              <th>Ástæður</th>
+              <th>Fundur A</th>
+              <th>Fundur B</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in duplicate_review_rows %}
+            <tr>
+              <td>
+                <strong>{{ item["confidence_label"] }}</strong>
+                <div class="mapping-meta">Score {{ "%.3f"|format(item["score"]) }}</div>
+                <div class="mapping-meta">{{ item["weekday_is"] }} {{ item["time_display"] }}</div>
+              </td>
+              <td>
+                <div class="match-reasons">
+                  {% for reason in item["match_reasons"] %}
+                  <span>{{ reason }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td>
+                <strong>{{ item["left"]["meeting_name_display"] }}</strong>
+                <div class="mapping-meta">{{ item["left"]["source"] }} · {{ item["left"]["fellowship_display"] }}</div>
+                {% if item["left"]["location_display"] %}<div class="mapping-meta">{{ item["left"]["location_display"] }}</div>{% endif %}
+                {% if item["left"]["venue_text"] %}<div class="mapping-meta">{{ item["left"]["venue_text"] }}</div>{% endif %}
+                <div class="mapping-meta">
+                  <a href="{{ item["left"]["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
+                  {% if item["left"]["source_locator"] %} · {{ item["left"]["source_locator"] }}{% endif %}
+                </div>
+                {% if item["left"]["source_excerpt"] %}<div class="mapping-meta">{{ item["left"]["source_excerpt"] }}</div>{% endif %}
+              </td>
+              <td>
+                <strong>{{ item["right"]["meeting_name_display"] }}</strong>
+                <div class="mapping-meta">{{ item["right"]["source"] }} · {{ item["right"]["fellowship_display"] }}</div>
+                {% if item["right"]["location_display"] %}<div class="mapping-meta">{{ item["right"]["location_display"] }}</div>{% endif %}
+                {% if item["right"]["venue_text"] %}<div class="mapping-meta">{{ item["right"]["venue_text"] }}</div>{% endif %}
+                <div class="mapping-meta">
+                  <a href="{{ item["right"]["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
+                  {% if item["right"]["source_locator"] %} · {{ item["right"]["source_locator"] }}{% endif %}
+                </div>
+                {% if item["right"]["source_excerpt"] %}<div class="mapping-meta">{{ item["right"]["source_excerpt"] }}</div>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engin sterk duplicate-pör fundust með núverandi heuristics.</p>
+        {% endif %}
+      </article>
+    </section>
     {% else %}
     <section class="mapping-section">
       <article class="mapping-card">
@@ -1058,6 +1151,7 @@ CARD_TEMPLATE = """
         <div class="admin-nav">
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
