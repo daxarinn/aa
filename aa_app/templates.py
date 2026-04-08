@@ -7,6 +7,10 @@ CARD_TEMPLATE = """
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fundaskrá</title>
+  {% if filters["view"] == "week" and week_day_count == 1 and previous_weekday_query_string and next_weekday_query_string %}
+  <link rel="prefetch" href="/?{{ previous_weekday_query_string }}" as="document">
+  <link rel="prefetch" href="/?{{ next_weekday_query_string }}" as="document">
+  {% endif %}
   <style>
     :root {
       --card: #fffdf8;
@@ -1292,7 +1296,7 @@ CARD_TEMPLATE = """
     {% elif filters["view"] == "week" %}
     <section class="week-shell">
       <div class="week-scroll" data-scroll-restore="week-shell">
-      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
+      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}"{% if previous_weekday_query_string %} data-prev-day-url="/?{{ previous_weekday_query_string }}"{% endif %}{% if next_weekday_query_string %} data-next-day-url="/?{{ next_weekday_query_string }}"{% endif %}>
         <div class="now-line-status" id="nowLineStatus">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
@@ -1973,6 +1977,8 @@ CARD_TEMPLATE = """
     .split('|')
     .map((item) => item.trim())
     .filter(Boolean);
+  const previousDayUrl = (board.dataset.prevDayUrl || '').trim();
+  const nextDayUrl = (board.dataset.nextDayUrl || '').trim();
   const currentWeekday = visibleWeekDays[0];
   const currentIndex = allWeekDays.indexOf(currentWeekday);
   if (!currentWeekday || currentIndex === -1 || allWeekDays.length < 2) return;
@@ -2057,16 +2063,10 @@ CARD_TEMPLATE = """
     });
   };
 
-  const navigateToWeekday = (offset, swipeDirection) => {
-    const nextIndex = (currentIndex + offset + allWeekDays.length) % allWeekDays.length;
-    const nextWeekday = allWeekDays[nextIndex];
-    if (!nextWeekday) return;
-
+  const navigateToWeekday = (targetUrl, swipeDirection) => {
+    if (!targetUrl) return;
     const shellWidth = Math.max(weekShell.clientWidth, 1);
     const exitOffset = Math.min(Math.round(shellWidth * 0.18), 96) * (swipeDirection === 'left' ? -1 : 1);
-    const url = new URL(window.location.href);
-    url.searchParams.set('weekday', nextWeekday);
-    url.searchParams.set('view', 'week');
     sessionStorage.setItem(
       swipeStateKey,
       JSON.stringify({
@@ -2081,7 +2081,7 @@ CARD_TEMPLATE = """
       transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
     });
     window.setTimeout(() => {
-      window.location.assign(url.toString());
+      window.location.assign(targetUrl);
     }, 170);
   };
 
@@ -2142,7 +2142,7 @@ CARD_TEMPLATE = """
     }
 
     event.preventDefault();
-    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.94) * 0.30, 104);
+    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.98) * 0.42, 136);
     const opacity = Math.max(0.84, 1 - (Math.abs(resistanceOffset) / 420));
     setBoardState({ offset: resistanceOffset, opacity, transition: 'none' });
   }, { passive: false });
@@ -2163,7 +2163,7 @@ CARD_TEMPLATE = """
 
     if (horizontalCommit) {
       const swipeDirection = deltaX < 0 ? 'left' : 'right';
-      navigateToWeekday(deltaX < 0 ? 1 : -1, swipeDirection);
+      navigateToWeekday(deltaX < 0 ? nextDayUrl : previousDayUrl, swipeDirection);
     } else {
       animateBackToRest();
     }

@@ -61,6 +61,19 @@ def build_query_string(filters: dict[str, str], overrides: dict[str, str] | None
     return urlencode({key: value for key, value in params.items() if value})
 
 
+def build_adjacent_weekday_queries(filters: dict[str, str]) -> tuple[str | None, str | None]:
+    week_days = [day for day, _ in AA_DAY_PAGES]
+    current_weekday = normalize_space(filters.get("weekday"))
+    if current_weekday not in week_days:
+        return None, None
+    current_index = week_days.index(current_weekday)
+    previous_weekday = week_days[(current_index - 1) % len(week_days)]
+    next_weekday = week_days[(current_index + 1) % len(week_days)]
+    previous_query = build_query_string(filters, overrides={"weekday": previous_weekday, "view": "week"})
+    next_query = build_query_string(filters, overrides={"weekday": next_weekday, "view": "week"})
+    return previous_query, next_query
+
+
 def read_json_cookie(name: str) -> dict[str, object] | list[object] | None:
     raw_value = request.cookies.get(name)
     if not raw_value:
@@ -406,6 +419,7 @@ def build_app(db_path: Path) -> Flask:
         csv_query_string = build_query_string(filters, exclude={"view"})
         list_query_string = build_query_string(filters, overrides={"view": "list"})
         week_query_string = build_query_string(filters, overrides={"view": "week"})
+        previous_weekday_query_string, next_weekday_query_string = build_adjacent_weekday_queries(filters)
         admin_query_string = build_query_string(filters, overrides={"admin_section": admin_section}, exclude={"view"})
         locations_query_string = build_query_string(filters, overrides={"admin_section": "locations"}, exclude={"view"})
         duplicates_query_string = build_query_string(filters, overrides={"admin_section": "duplicates"}, exclude={"view"})
@@ -439,6 +453,8 @@ def build_app(db_path: Path) -> Flask:
                 csv_query_string=csv_query_string,
                 list_query_string=list_query_string,
                 week_query_string=week_query_string,
+                previous_weekday_query_string=previous_weekday_query_string,
+                next_weekday_query_string=next_weekday_query_string,
                 admin_query_string=admin_query_string,
                 locations_query_string=locations_query_string,
                 duplicates_query_string=duplicates_query_string,
