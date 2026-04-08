@@ -2088,6 +2088,8 @@ CARD_TEMPLATE = """
   let axisLock = '';
   let isAnimating = false;
   let cleanupTimer = null;
+  let currentBoardOffset = 0;
+  let currentBoardOpacity = 1;
 
   const weekdayField = document.getElementById('weekday');
   const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form, .slot-tooltip'));
@@ -2110,6 +2112,8 @@ CARD_TEMPLATE = """
   };
 
   const setBoardState = ({ offset = 0, opacity = 1, transition = 'none' } = {}) => {
+    currentBoardOffset = offset;
+    currentBoardOpacity = opacity;
     board.style.transition = transition;
     board.style.transform = `translate3d(${offset}px, 0, 0)`;
     board.style.opacity = String(opacity);
@@ -2166,31 +2170,44 @@ CARD_TEMPLATE = """
       return;
     }
     const shellWidth = Math.max(weekShell.clientWidth, 1);
-    const travel = Math.min(Math.round(shellWidth * 0.1), 56);
-    const exitOffset = travel * (swipeDirection === 'left' ? -1 : 1);
-    const entryOffset = travel * (swipeDirection === 'left' ? 1 : -1);
+    const directionSign = swipeDirection === 'left' ? -1 : 1;
+    const releaseOffset = currentBoardOffset || 0;
+    const releaseDistance = Math.abs(releaseOffset);
+    const exitDistance = Math.min(
+      Math.max(releaseDistance + 44, Math.round(shellWidth * 0.24)),
+      Math.round(shellWidth * 0.42),
+    );
+    const entryDistance = Math.min(
+      Math.max(Math.round(releaseDistance * 0.38), 34),
+      Math.round(shellWidth * 0.18),
+    );
+    const exitOffset = exitDistance * directionSign;
+    const entryOffset = -entryDistance * directionSign;
+    const exitOpacity = Math.max(0.86, Math.min(currentBoardOpacity, 0.96) - 0.06);
     isAnimating = true;
     window.__aaCloseWeekTooltips?.();
     setBoardState({
       offset: exitOffset,
-      opacity: 0.9,
-      transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease',
+      opacity: exitOpacity,
+      transition: 'transform 130ms cubic-bezier(0.22, 1, 0.36, 1), opacity 130ms ease',
     });
     window.setTimeout(() => {
       replaceBoardContent(template);
-      setBoardState({ offset: entryOffset, opacity: 0.92, transition: 'none' });
+      setBoardState({ offset: entryOffset, opacity: 0.93, transition: 'none' });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setBoardState({
             offset: 0,
             opacity: 1,
-            transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+            transition: 'transform 170ms cubic-bezier(0.22, 1, 0.36, 1), opacity 170ms ease',
           });
-          scheduleBoardCleanup(240);
-          isAnimating = false;
+          scheduleBoardCleanup(220);
+          window.setTimeout(() => {
+            isAnimating = false;
+          }, 180);
         });
       });
-    }, 110);
+    }, 120);
   };
 
   const getTrackedTouch = (touchList) => {
