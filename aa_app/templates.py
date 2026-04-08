@@ -1963,6 +1963,7 @@ CARD_TEMPLATE = """
   const board = document.querySelector('.week-board.single-day');
   const weekShell = document.querySelector('.week-scroll');
   if (!board || !weekShell) return;
+  const swipeStateKey = 'aa-day-swipe-state';
 
   const allWeekDays = (board.dataset.allWeekDays || '')
     .split('|')
@@ -1976,54 +1977,210 @@ CARD_TEMPLATE = """
   const currentIndex = allWeekDays.indexOf(currentWeekday);
   if (!currentWeekday || currentIndex === -1 || allWeekDays.length < 2) return;
 
+  let activeTouchId = null;
   let touchStartX = null;
   let touchStartY = null;
+  let touchCurrentX = null;
+  let touchCurrentY = null;
+  let axisLock = '';
+  let isAnimating = false;
+  let cleanupTimer = null;
 
   const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form'));
 
-  const navigateToWeekday = (offset) => {
-    const nextIndex = currentIndex + offset;
-    if (nextIndex < 0 || nextIndex >= allWeekDays.length) return;
+  const clearCleanupTimer = () => {
+    if (cleanupTimer !== null) {
+      window.clearTimeout(cleanupTimer);
+      cleanupTimer = null;
+    }
+  };
+
+  const scheduleBoardCleanup = (delay = 260) => {
+    clearCleanupTimer();
+    cleanupTimer = window.setTimeout(() => {
+      board.style.transition = '';
+      board.style.transform = '';
+      board.style.opacity = '';
+      cleanupTimer = null;
+    }, delay);
+  };
+
+  const setBoardState = ({ offset = 0, opacity = 1, transition = 'none' } = {}) => {
+    board.style.transition = transition;
+    board.style.transform = `translate3d(${offset}px, 0, 0)`;
+    board.style.opacity = String(opacity);
+  };
+
+  const resetGesture = () => {
+    activeTouchId = null;
+    touchStartX = null;
+    touchStartY = null;
+    touchCurrentX = null;
+    touchCurrentY = null;
+    axisLock = '';
+  };
+
+  const animateBackToRest = () => {
+    setBoardState({
+      offset: 0,
+      opacity: 1,
+      transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease',
+    });
+    scheduleBoardCleanup();
+  };
+
+  const animateIncomingBoard = () => {
+    let payload;
+    try {
+      payload = JSON.parse(sessionStorage.getItem(swipeStateKey) || 'null');
+    } catch (_error) {
+      payload = null;
+    }
+    sessionStorage.removeItem(swipeStateKey);
+    if (!payload || !payload.direction || Math.abs(Date.now() - Number(payload.at || 0)) > 2500) {
+      return;
+    }
+
+    const shellWidth = Math.max(weekShell.clientWidth, 1);
+    const entryOffset = Math.min(Math.round(shellWidth * 0.18), 96);
+    const startOffset = payload.direction === 'left' ? entryOffset : -entryOffset;
+    setBoardState({ offset: startOffset, opacity: 0.84, transition: 'none' });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setBoardState({
+          offset: 0,
+          opacity: 1,
+          transition: 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease',
+        });
+        scheduleBoardCleanup(320);
+      });
+    });
+  };
+
+  const navigateToWeekday = (offset, swipeDirection) => {
+    const nextIndex = (currentIndex + offset + allWeekDays.length) % allWeekDays.length;
     const nextWeekday = allWeekDays[nextIndex];
     if (!nextWeekday) return;
 
+    const shellWidth = Math.max(weekShell.clientWidth, 1);
+    const exitOffset = Math.min(Math.round(shellWidth * 0.18), 96) * (swipeDirection === 'left' ? -1 : 1);
     const url = new URL(window.location.href);
     url.searchParams.set('weekday', nextWeekday);
     url.searchParams.set('view', 'week');
-    window.location.assign(url.toString());
+    sessionStorage.setItem(
+      swipeStateKey,
+      JSON.stringify({
+        at: Date.now(),
+        direction: swipeDirection,
+      }),
+    );
+    isAnimating = true;
+    setBoardState({
+      offset: exitOffset,
+      opacity: 0.78,
+      transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+    });
+    window.setTimeout(() => {
+      window.location.assign(url.toString());
+    }, 170);
   };
 
+  const getTrackedTouch = (touchList) => {
+    if (activeTouchId === null) return null;
+    for (const touch of touchList) {
+      if (touch.identifier === activeTouchId) {
+        return touch;
+      }
+    }
+    return null;
+  };
+
+  animateIncomingBoard();
+
   weekShell.addEventListener('touchstart', (event) => {
-    if (isInteractiveTarget(event.target) || event.touches.length !== 1) {
-      touchStartX = null;
-      touchStartY = null;
+    if (isAnimating || isInteractiveTarget(event.target) || event.touches.length !== 1) {
+      resetGesture();
       return;
     }
-    touchStartX = event.touches[0].clientX;
-    touchStartY = event.touches[0].clientY;
+    clearCleanupTimer();
+    const touch = event.touches[0];
+    activeTouchId = touch.identifier;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchCurrentX = touch.clientX;
+    touchCurrentY = touch.clientY;
+    axisLock = '';
   }, { passive: true });
 
-  weekShell.addEventListener('touchend', (event) => {
-    if (touchStartX === null || touchStartY === null || event.changedTouches.length !== 1) {
-      touchStartX = null;
-      touchStartY = null;
+  weekShell.addEventListener('touchmove', (event) => {
+    const touch = getTrackedTouch(event.touches);
+    if (!touch || touchStartX === null || touchStartY === null || isAnimating) {
       return;
     }
 
-    const deltaX = event.changedTouches[0].clientX - touchStartX;
-    const deltaY = event.changedTouches[0].clientY - touchStartY;
-    touchStartX = null;
-    touchStartY = null;
+    touchCurrentX = touch.clientX;
+    touchCurrentY = touch.clientY;
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touchCurrentY - touchStartY;
+    const absDeltaX = Math.abs(deltaX);
+    const absDeltaY = Math.abs(deltaY);
 
-    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.35) {
+    if (!axisLock) {
+      if (absDeltaY >= 12 && absDeltaY > absDeltaX * 1.12) {
+        axisLock = 'y';
+        return;
+      }
+      if (absDeltaX >= 22 && absDeltaX > absDeltaY * 1.6) {
+        axisLock = 'x';
+      } else {
+        return;
+      }
+    }
+
+    if (axisLock !== 'x') {
       return;
     }
 
-    if (deltaX < 0) {
-      navigateToWeekday(1);
+    event.preventDefault();
+    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.92) * 0.22, 84);
+    const opacity = Math.max(0.84, 1 - (Math.abs(resistanceOffset) / 420));
+    setBoardState({ offset: resistanceOffset, opacity, transition: 'none' });
+  }, { passive: false });
+
+  const finishSwipe = (touch) => {
+    if (!touch || touchStartX === null || touchStartY === null || isAnimating) {
+      resetGesture();
+      return;
+    }
+
+    touchCurrentX = touch.clientX;
+    touchCurrentY = touch.clientY;
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touchCurrentY - touchStartY;
+    const absDeltaX = Math.abs(deltaX);
+    const absDeltaY = Math.abs(deltaY);
+    const horizontalCommit = axisLock === 'x' && absDeltaX >= 96 && absDeltaX > absDeltaY * 1.7;
+
+    if (horizontalCommit) {
+      const swipeDirection = deltaX < 0 ? 'left' : 'right';
+      navigateToWeekday(deltaX < 0 ? -1 : 1, swipeDirection);
     } else {
-      navigateToWeekday(-1);
+      animateBackToRest();
     }
+
+    resetGesture();
+  };
+
+  weekShell.addEventListener('touchend', (event) => {
+    const touch = getTrackedTouch(event.changedTouches);
+    finishSwipe(touch);
+  }, { passive: true });
+
+  weekShell.addEventListener('touchcancel', () => {
+    if (!isAnimating) {
+      animateBackToRest();
+    }
+    resetGesture();
   }, { passive: true });
 })();
 </script>
