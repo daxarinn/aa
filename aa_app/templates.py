@@ -543,11 +543,13 @@ CARD_TEMPLATE = """
       z-index: 20;
       cursor: default;
     }
-    .slot-card:hover .slot-tooltip,
-    .slot-card:focus .slot-tooltip,
-    .slot-card:focus-within .slot-tooltip,
     .slot-card.is-open .slot-tooltip {
       display: block;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .slot-card:hover .slot-tooltip {
+        display: block;
+      }
     }
     .slot-tooltip::before {
       content: "";
@@ -1290,7 +1292,7 @@ CARD_TEMPLATE = """
     {% elif filters["view"] == "week" %}
     <section class="week-shell">
       <div class="week-scroll" data-scroll-restore="week-shell">
-      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
+      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
         <div class="now-line-status" id="nowLineStatus">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
@@ -1955,6 +1957,74 @@ CARD_TEMPLATE = """
   window.addEventListener('load', attemptInitialAutoScroll);
   window.addEventListener('resize', updateNowLine);
   setInterval(updateNowLine, 30000);
+})();
+
+(function() {
+  const board = document.querySelector('.week-board.single-day');
+  const weekShell = document.querySelector('.week-scroll');
+  if (!board || !weekShell) return;
+
+  const allWeekDays = (board.dataset.allWeekDays || '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const visibleWeekDays = (board.dataset.weekDays || '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const currentWeekday = visibleWeekDays[0];
+  const currentIndex = allWeekDays.indexOf(currentWeekday);
+  if (!currentWeekday || currentIndex === -1 || allWeekDays.length < 2) return;
+
+  let touchStartX = null;
+  let touchStartY = null;
+
+  const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form'));
+
+  const navigateToWeekday = (offset) => {
+    const nextIndex = currentIndex + offset;
+    if (nextIndex < 0 || nextIndex >= allWeekDays.length) return;
+    const nextWeekday = allWeekDays[nextIndex];
+    if (!nextWeekday) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('weekday', nextWeekday);
+    url.searchParams.set('view', 'week');
+    window.location.assign(url.toString());
+  };
+
+  weekShell.addEventListener('touchstart', (event) => {
+    if (isInteractiveTarget(event.target) || event.touches.length !== 1) {
+      touchStartX = null;
+      touchStartY = null;
+      return;
+    }
+    touchStartX = event.touches[0].clientX;
+    touchStartY = event.touches[0].clientY;
+  }, { passive: true });
+
+  weekShell.addEventListener('touchend', (event) => {
+    if (touchStartX === null || touchStartY === null || event.changedTouches.length !== 1) {
+      touchStartX = null;
+      touchStartY = null;
+      return;
+    }
+
+    const deltaX = event.changedTouches[0].clientX - touchStartX;
+    const deltaY = event.changedTouches[0].clientY - touchStartY;
+    touchStartX = null;
+    touchStartY = null;
+
+    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.35) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      navigateToWeekday(1);
+    } else {
+      navigateToWeekday(-1);
+    }
+  }, { passive: true });
 })();
 </script>
 </html>
