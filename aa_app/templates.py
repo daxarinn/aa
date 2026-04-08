@@ -60,6 +60,7 @@ CARD_TEMPLATE = """
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fundaskrá</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@12/swiper-bundle.min.css">
   <style>
     :root {
       --card: #fffdf8;
@@ -336,7 +337,6 @@ CARD_TEMPLATE = """
       overflow: visible;
     }
     .week-scroll {
-      position: relative;
       overflow-x: auto;
       overflow-y: visible;
       border-radius: 16px;
@@ -351,16 +351,20 @@ CARD_TEMPLATE = """
     .week-board.single-day {
       min-width: 0;
       grid-template-columns: var(--week-time-column-width) minmax(0, 1fr);
-      will-change: transform, opacity;
     }
-    .week-board.is-swipe-clone {
-      position: absolute;
-      inset: 0 0 auto 0;
-      width: 100%;
-      min-width: 0;
-      z-index: 7;
-      pointer-events: none;
-      will-change: transform, opacity;
+    .day-carousel {
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .day-carousel .swiper-wrapper {
+      align-items: stretch;
+    }
+    .day-carousel .swiper-slide {
+      height: auto;
+      overflow: visible;
+    }
+    .day-carousel .week-board.single-day {
+      height: auto;
     }
     .week-head {
       position: sticky;
@@ -1364,11 +1368,21 @@ CARD_TEMPLATE = """
     </section>
     {% elif filters["view"] == "week" %}
     <section class="week-shell">
+      {% if week_day_count == 1 and single_day_week_views %}
+      <div class="day-carousel swiper" data-current-day="{{ week_days[0] }}">
+        <div class="swiper-wrapper">
+          {% for item in single_day_week_views %}
+          <div class="swiper-slide" data-day="{{ item["day"] }}" data-query-string="{{ item["query_string"] }}">
+            <div class="week-board single-day" data-week-days="{{ item["day"] }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ item["weekday_order"] }}" data-current-day="{{ item["day"] }}">
+              {{ render_single_day_board(item["day"], item["weekday_order"], item["slots"]) }}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
       <div class="week-scroll" data-scroll-restore="week-shell">
-      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}"{% if week_day_count == 1 and week_days %} data-current-day="{{ week_days[0] }}"{% endif %}>
-        {% if week_day_count == 1 %}
-        {{ render_single_day_board(week_days[0], week_day_orders[0], week_slots) }}
-        {% else %}
+      <div class="week-board" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
         <div class="now-line-status" id="nowLineStatus">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
@@ -1416,18 +1430,9 @@ CARD_TEMPLATE = """
         </div>
         {% endfor %}
         {% endfor %}
-        {% endif %}
       </div>
-      {% if week_day_count == 1 and single_day_week_views %}
-      <div class="week-day-templates" hidden aria-hidden="true">
-        {% for item in single_day_week_views %}
-        <template data-day-view="{{ item["day"] }}" data-weekday-order="{{ item["weekday_order"] }}" data-query-string="{{ item["query_string"] }}">
-          {{ render_single_day_board(item["day"], item["weekday_order"], item["slots"]) }}
-        </template>
-        {% endfor %}
       </div>
       {% endif %}
-      </div>
     </section>
     {% else %}
     <section class="grid">
@@ -1480,6 +1485,7 @@ CARD_TEMPLATE = """
     {% endif %}
   </div>
 </body>
+<script src="https://cdn.jsdelivr.net/npm/swiper@12/swiper-bundle.min.js"></script>
 <script>
 (function() {
   const filtersCookieName = "{{ filters_cookie_name }}";
@@ -1950,8 +1956,11 @@ CARD_TEMPLATE = """
 })();
 
 (function() {
-  const board = document.querySelector('.week-board');
-  if (!board) return;
+  const getBoard = () => (
+    document.querySelector('.day-carousel .swiper-slide-active .week-board')
+    || document.querySelector('.week-board')
+  );
+  if (!getBoard()) return;
   let initialAutoScrollDone = false;
 
   const parseMinutes = (value) => {
@@ -1971,21 +1980,30 @@ CARD_TEMPLATE = """
     timeZone: 'Atlantic/Reykjavik'
   });
   const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
-  const visibleDayOrders = () => (board.dataset.weekdayOrders || '')
-    .split('|')
-    .map((item) => Number(item.trim()))
-    .filter((value) => !Number.isNaN(value));
+  const visibleDayOrders = () => {
+    const board = getBoard();
+    if (!board) return [];
+    return (board.dataset.weekdayOrders || '')
+      .split('|')
+      .map((item) => Number(item.trim()))
+      .filter((value) => !Number.isNaN(value));
+  };
 
-  const getNowLineElements = () => ({
-    line: board.querySelector('#nowLine'),
-    status: board.querySelector('#nowLineStatus'),
-    label: board.querySelector('#nowLineLabel'),
-  });
+  const getNowLineElements = () => {
+    const board = getBoard();
+    return {
+      board,
+      line: board?.querySelector('#nowLine') || null,
+      status: board?.querySelector('#nowLineStatus') || null,
+      label: board?.querySelector('#nowLineLabel') || null,
+    };
+  };
 
   const attemptInitialAutoScroll = () => {
-    const { line } = getNowLineElements();
+    const { board, line } = getNowLineElements();
     if (
-      !line
+      !board
+      || !line
       || !line.classList.contains('visible')
       || initialAutoScrollDone
       || (window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
@@ -2008,8 +2026,8 @@ CARD_TEMPLATE = """
   };
 
   function updateNowLine() {
-    const { line, status, label } = getNowLineElements();
-    if (!line || !status || !label) return;
+    const { board, line, status, label } = getNowLineElements();
+    if (!board || !line || !status || !label) return;
     const parts = formatter.formatToParts(new Date());
     const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
     const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
@@ -2076,282 +2094,64 @@ CARD_TEMPLATE = """
 })();
 
 (function() {
-  const board = document.querySelector('.week-board.single-day');
-  const weekShell = document.querySelector('.week-scroll');
-  if (!board || !weekShell) return;
-  const dayTemplates = new Map(
-    Array.from(document.querySelectorAll('template[data-day-view]'))
-      .map((template) => [String(template.dataset.dayView || '').trim(), template])
-      .filter(([day]) => day)
-  );
-  const allWeekDays = (board.dataset.allWeekDays || '')
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  let currentWeekday = String(board.dataset.currentDay || board.dataset.weekDays || '').split('|')[0]?.trim() || '';
-  if (!currentWeekday || !dayTemplates.has(currentWeekday) || allWeekDays.length < 2) return;
+  const carousel = document.querySelector('.day-carousel.swiper');
+  if (!carousel || typeof window.Swiper !== 'function') return;
 
-  let activeTouchId = null;
-  let touchStartX = null;
-  let touchStartY = null;
-  let touchCurrentX = null;
-  let touchCurrentY = null;
-  let axisLock = '';
-  let isAnimating = false;
-  let cleanupTimer = null;
-  let currentBoardOffset = 0;
-  let currentBoardOpacity = 1;
+  const slides = Array.from(carousel.querySelectorAll('.swiper-slide[data-day]'));
+  if (slides.length < 2) return;
 
   const weekdayField = document.getElementById('weekday');
-  const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form, .slot-tooltip'));
-  const swipeCloneClass = 'is-swipe-clone';
+  const currentDay = String(carousel.dataset.currentDay || '').trim();
+  const initialSlide = Math.max(0, slides.findIndex((slide) => (slide.dataset.day || '').trim() === currentDay));
 
-  const clearCleanupTimer = () => {
-    if (cleanupTimer !== null) {
-      window.clearTimeout(cleanupTimer);
-      cleanupTimer = null;
+  const syncFromSwiper = (swiper) => {
+    const logicalSlide = slides[swiper.realIndex] || slides[initialSlide] || null;
+    const day = String(logicalSlide?.dataset.day || '').trim();
+    const queryString = String(logicalSlide?.dataset.queryString || '').trim();
+    if (weekdayField && day) {
+      weekdayField.value = day;
     }
-  };
-
-  const scheduleBoardCleanup = (delay = 260) => {
-    clearCleanupTimer();
-    cleanupTimer = window.setTimeout(() => {
-      board.style.transition = '';
-      board.style.transform = '';
-      board.style.opacity = '';
-      cleanupTimer = null;
-    }, delay);
-  };
-
-  const setBoardState = ({ offset = 0, opacity = 1, transition = 'none' } = {}) => {
-    currentBoardOffset = offset;
-    currentBoardOpacity = opacity;
-    board.style.transition = transition;
-    board.style.transform = `translate3d(${offset}px, 0, 0)`;
-    board.style.opacity = String(opacity);
-  };
-
-  const resetGesture = () => {
-    activeTouchId = null;
-    touchStartX = null;
-    touchStartY = null;
-    touchCurrentX = null;
-    touchCurrentY = null;
-    axisLock = '';
-  };
-
-  const setCurrentDay = (day) => {
-    currentWeekday = day;
-    board.dataset.currentDay = day;
-    board.dataset.weekDays = day;
-  };
-
-  const activeSwipeClone = () => weekShell.querySelector(`.week-board.${swipeCloneClass}`);
-
-  const removeSwipeClone = () => {
-    activeSwipeClone()?.remove();
-  };
-
-  const replaceBoardContent = (template) => {
-    board.replaceChildren(template.content.cloneNode(true));
-    board.dataset.weekdayOrders = String(template.dataset.weekdayOrder || '').trim();
-    setCurrentDay(String(template.dataset.dayView || '').trim());
-    if (weekdayField) {
-      weekdayField.value = currentWeekday;
+    if (day) {
+      carousel.dataset.currentDay = day;
     }
-    const queryString = String(template.dataset.queryString || '').trim();
-    history.replaceState({ weekday: currentWeekday }, '', queryString ? `/?${queryString}` : window.location.pathname);
+    history.replaceState({ weekday: day }, '', queryString ? `/?${queryString}` : window.location.pathname);
     window.__aaSyncFavoriteButtons?.();
+    window.__aaCloseWeekTooltips?.();
     window.__aaUpdateNowLine?.();
   };
 
-  const neighboringDay = (step) => {
-    const currentIndex = allWeekDays.indexOf(currentWeekday);
-    if (currentIndex === -1) return '';
-    return allWeekDays[(currentIndex + step + allWeekDays.length) % allWeekDays.length];
-  };
-
-  const buildSwipeClone = (template, initialOffset) => {
-    removeSwipeClone();
-    const clone = board.cloneNode(false);
-    clone.classList.add(swipeCloneClass);
-    clone.dataset.currentDay = String(template.dataset.dayView || '').trim();
-    clone.dataset.weekDays = clone.dataset.currentDay;
-    clone.dataset.weekdayOrders = String(template.dataset.weekdayOrder || '').trim();
-    clone.replaceChildren(template.content.cloneNode(true));
-    clone.setAttribute('aria-hidden', 'true');
-    clone.style.transition = 'none';
-    clone.style.transform = `translate3d(${initialOffset}px, 0, 0)`;
-    clone.style.opacity = '0.93';
-    weekShell.appendChild(clone);
-    return clone;
-  };
-
-  const animateBackToRest = () => {
-    setBoardState({
-      offset: 0,
-      opacity: 1,
-      transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
-    });
-    scheduleBoardCleanup(220);
-  };
-
-  const animateToDay = (swipeDirection) => {
-    const targetDay = neighboringDay(swipeDirection === 'left' ? 1 : -1);
-    const template = dayTemplates.get(targetDay);
-    if (!template) {
-      animateBackToRest();
-      return;
-    }
-    const shellWidth = Math.max(weekShell.clientWidth, 1);
-    const directionSign = swipeDirection === 'left' ? -1 : 1;
-    const releaseOffset = currentBoardOffset || 0;
-    const releaseDistance = Math.abs(releaseOffset);
-    const exitDistance = Math.min(
-      Math.max(releaseDistance + 44, Math.round(shellWidth * 0.24)),
-      Math.round(shellWidth * 0.42),
-    );
-    const entryDistance = Math.min(
-      Math.max(Math.round(releaseDistance * 0.38), 34),
-      Math.round(shellWidth * 0.18),
-    );
-    const exitOffset = exitDistance * directionSign;
-    const entryOffset = -entryDistance * directionSign;
-    const exitOpacity = Math.max(0.86, Math.min(currentBoardOpacity, 0.96) - 0.06);
-    const incomingClone = buildSwipeClone(template, entryOffset);
-    isAnimating = true;
-    window.__aaCloseWeekTooltips?.();
-    const finishSwipeAnimation = () => {
-      replaceBoardContent(template);
-      setBoardState({ offset: 0, opacity: 1, transition: 'none' });
-      removeSwipeClone();
-      isAnimating = false;
-    };
-
-    requestAnimationFrame(() => {
-      setBoardState({
-        offset: exitOffset,
-        opacity: exitOpacity,
-        transition: 'transform 185ms cubic-bezier(0.22, 1, 0.36, 1), opacity 185ms ease',
-      });
-      incomingClone.style.transition = 'transform 185ms cubic-bezier(0.22, 1, 0.36, 1), opacity 185ms ease';
-      incomingClone.style.transform = 'translate3d(0, 0, 0)';
-      incomingClone.style.opacity = '1';
-    });
-
-    const finalizeOnTransitionEnd = (event) => {
-      if (event.target !== incomingClone || event.propertyName !== 'transform') {
-        return;
-      }
-      incomingClone.removeEventListener('transitionend', finalizeOnTransitionEnd);
-      finishSwipeAnimation();
-    };
-
-    incomingClone.addEventListener('transitionend', finalizeOnTransitionEnd);
-    window.setTimeout(() => {
-      if (isAnimating) {
-        incomingClone.removeEventListener('transitionend', finalizeOnTransitionEnd);
-        finishSwipeAnimation();
-      }
-    }, 260);
-  };
-
-  const getTrackedTouch = (touchList) => {
-    if (activeTouchId === null) return null;
-    for (const touch of touchList) {
-      if (touch.identifier === activeTouchId) {
-        return touch;
-      }
-    }
-    return null;
-  };
-
-  weekShell.addEventListener('touchstart', (event) => {
-    if (isAnimating || isInteractiveTarget(event.target) || event.touches.length !== 1) {
-      resetGesture();
-      return;
-    }
-    clearCleanupTimer();
-    removeSwipeClone();
-    const touch = event.touches[0];
-    activeTouchId = touch.identifier;
-    touchStartX = touch.clientX;
-    touchStartY = touch.clientY;
-    touchCurrentX = touch.clientX;
-    touchCurrentY = touch.clientY;
-    axisLock = '';
-  }, { passive: true });
-
-  weekShell.addEventListener('touchmove', (event) => {
-    const touch = getTrackedTouch(event.touches);
-    if (!touch || touchStartX === null || touchStartY === null || isAnimating) {
-      return;
-    }
-
-    touchCurrentX = touch.clientX;
-    touchCurrentY = touch.clientY;
-    const deltaX = touchCurrentX - touchStartX;
-    const deltaY = touchCurrentY - touchStartY;
-    const absDeltaX = Math.abs(deltaX);
-    const absDeltaY = Math.abs(deltaY);
-
-    if (!axisLock) {
-      if (absDeltaY >= 12 && absDeltaY > absDeltaX * 1.12) {
-        axisLock = 'y';
-        return;
-      }
-      if (absDeltaX >= 28 && absDeltaX > absDeltaY * 1.9) {
-        axisLock = 'x';
+  const swiper = new window.Swiper(carousel, {
+    initialSlide,
+    loop: true,
+    speed: 235,
+    threshold: 10,
+    touchAngle: 30,
+    resistanceRatio: 0.2,
+    longSwipesRatio: 0.18,
+    longSwipesMs: 250,
+    shortSwipes: true,
+    followFinger: true,
+    watchSlidesProgress: true,
+    on: {
+      init(instance) {
+        syncFromSwiper(instance);
+      },
+      touchStart() {
         window.__aaCloseWeekTooltips?.();
-      } else {
-        return;
-      }
-    }
+      },
+      slideChangeTransitionStart() {
+        window.__aaCloseWeekTooltips?.();
+      },
+      slideChangeTransitionEnd(instance) {
+        syncFromSwiper(instance);
+      },
+    },
+  });
 
-    if (axisLock !== 'x') {
-      return;
-    }
-
-    event.preventDefault();
-    const resistanceOffset = Math.sign(deltaX) * Math.min(absDeltaX * 0.86, 164);
-    const opacity = Math.max(0.88, 1 - (Math.abs(resistanceOffset) / 520));
-    setBoardState({ offset: resistanceOffset, opacity, transition: 'none' });
-  }, { passive: false });
-
-  const finishSwipe = (touch) => {
-    if (!touch || touchStartX === null || touchStartY === null || isAnimating) {
-      resetGesture();
-      return;
-    }
-
-    touchCurrentX = touch.clientX;
-    touchCurrentY = touch.clientY;
-    const deltaX = touchCurrentX - touchStartX;
-    const deltaY = touchCurrentY - touchStartY;
-    const absDeltaX = Math.abs(deltaX);
-    const absDeltaY = Math.abs(deltaY);
-    const horizontalCommit = axisLock === 'x' && absDeltaX >= 84 && absDeltaX > absDeltaY * 1.9;
-
-    if (horizontalCommit) {
-      animateToDay(deltaX < 0 ? 'left' : 'right');
-    } else {
-      animateBackToRest();
-    }
-
-    resetGesture();
-  };
-
-  weekShell.addEventListener('touchend', (event) => {
-    const touch = getTrackedTouch(event.changedTouches);
-    finishSwipe(touch);
-  }, { passive: true });
-
-  weekShell.addEventListener('touchcancel', () => {
-    if (!isAnimating) {
-      animateBackToRest();
-    }
-    resetGesture();
-  }, { passive: true });
+  window.addEventListener('resize', () => {
+    swiper.update();
+    window.__aaUpdateNowLine?.();
+  });
 })();
 </script>
 </html>
