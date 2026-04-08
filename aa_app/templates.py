@@ -1851,9 +1851,11 @@ CARD_TEMPLATE = """
 })();
 
 (function() {
-  const weekShell = document.querySelector('.week-scroll');
-  if (!weekShell) return;
+  const weekContainer = document.querySelector('.week-scroll, .day-carousel');
+  if (!weekContainer) return;
   const suppressFocusOpenUntil = new WeakMap();
+  let touchStartPoint = null;
+  let suppressSyntheticClickUntil = 0;
 
   const closeCards = (exceptCard = null) => {
     document.querySelectorAll('.slot-card.is-open').forEach((card) => {
@@ -1874,7 +1876,7 @@ CARD_TEMPLATE = """
     tooltip.style.transform = 'translateX(0)';
 
     const viewportPadding = 10;
-    const boundaryRect = weekShell ? weekShell.getBoundingClientRect() : {
+    const boundaryRect = weekContainer ? weekContainer.getBoundingClientRect() : {
       left: viewportPadding,
       right: window.innerWidth - viewportPadding,
       top: viewportPadding,
@@ -1898,14 +1900,7 @@ CARD_TEMPLATE = """
     }
   };
 
-  document.addEventListener('click', (event) => {
-    const card = event.target.closest('.slot-card');
-    if (!card) {
-      closeCards();
-      return;
-    }
-    if (event.target.closest('.favorite-toggle, a, button')) return;
-    if (event.target.closest('.slot-tooltip')) return;
+  const toggleCard = (card) => {
     const willOpen = !card.classList.contains('is-open');
     closeCards(card);
     card.classList.toggle('is-open', willOpen);
@@ -1917,9 +1912,65 @@ CARD_TEMPLATE = """
     if (typeof card.blur === 'function') {
       card.blur();
     }
+  };
+
+  document.addEventListener('click', (event) => {
+    if (Date.now() < suppressSyntheticClickUntil) {
+      return;
+    }
+    const card = event.target.closest('.slot-card');
+    if (!card) {
+      closeCards();
+      return;
+    }
+    if (event.target.closest('.favorite-toggle, a, button')) return;
+    if (event.target.closest('.slot-tooltip')) return;
+    toggleCard(card);
   });
 
-  weekShell.addEventListener('mouseover', (event) => {
+  weekContainer.addEventListener('touchstart', (event) => {
+    if (event.touches.length !== 1) {
+      touchStartPoint = null;
+      return;
+    }
+    const touch = event.touches[0];
+    touchStartPoint = {
+      x: touch.clientX,
+      y: touch.clientY,
+      target: event.target,
+    };
+  }, { passive: true });
+
+  weekContainer.addEventListener('touchend', (event) => {
+    if (!touchStartPoint || event.changedTouches.length !== 1) {
+      touchStartPoint = null;
+      return;
+    }
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStartPoint.x;
+    const deltaY = touch.clientY - touchStartPoint.y;
+    const movement = Math.hypot(deltaX, deltaY);
+    const target = event.target;
+    touchStartPoint = null;
+    if (movement > 10) {
+      return;
+    }
+    const card = target.closest('.slot-card');
+    if (!card) {
+      closeCards();
+      return;
+    }
+    if (target.closest('.favorite-toggle, a, button')) {
+      return;
+    }
+    if (target.closest('.slot-tooltip')) {
+      return;
+    }
+    suppressSyntheticClickUntil = Date.now() + 500;
+    toggleCard(card);
+  }, { passive: true });
+
+  weekContainer.addEventListener('mouseover', (event) => {
     if (!event.target || window.matchMedia('(hover: hover) and (pointer: fine)').matches === false) {
       return;
     }
@@ -1929,7 +1980,7 @@ CARD_TEMPLATE = """
     }
   });
 
-  weekShell.addEventListener('focusin', (event) => {
+  weekContainer.addEventListener('focusin', (event) => {
     const card = event.target.closest('.slot-card');
     if (!card) return;
     if ((suppressFocusOpenUntil.get(card) || 0) > Date.now()) {
