@@ -336,6 +336,7 @@ CARD_TEMPLATE = """
       overflow: visible;
     }
     .week-scroll {
+      position: relative;
       overflow-x: auto;
       overflow-y: visible;
       border-radius: 16px;
@@ -350,6 +351,16 @@ CARD_TEMPLATE = """
     .week-board.single-day {
       min-width: 0;
       grid-template-columns: var(--week-time-column-width) minmax(0, 1fr);
+      will-change: transform, opacity;
+    }
+    .week-board.is-swipe-clone {
+      position: absolute;
+      inset: 0 0 auto 0;
+      width: 100%;
+      min-width: 0;
+      z-index: 7;
+      pointer-events: none;
+      will-change: transform, opacity;
     }
     .week-head {
       position: sticky;
@@ -2093,6 +2104,7 @@ CARD_TEMPLATE = """
 
   const weekdayField = document.getElementById('weekday');
   const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form, .slot-tooltip'));
+  const swipeCloneClass = 'is-swipe-clone';
 
   const clearCleanupTimer = () => {
     if (cleanupTimer !== null) {
@@ -2134,6 +2146,12 @@ CARD_TEMPLATE = """
     board.dataset.weekDays = day;
   };
 
+  const activeSwipeClone = () => weekShell.querySelector(`.week-board.${swipeCloneClass}`);
+
+  const removeSwipeClone = () => {
+    activeSwipeClone()?.remove();
+  };
+
   const replaceBoardContent = (template) => {
     board.replaceChildren(template.content.cloneNode(true));
     board.dataset.weekdayOrders = String(template.dataset.weekdayOrder || '').trim();
@@ -2151,6 +2169,22 @@ CARD_TEMPLATE = """
     const currentIndex = allWeekDays.indexOf(currentWeekday);
     if (currentIndex === -1) return '';
     return allWeekDays[(currentIndex + step + allWeekDays.length) % allWeekDays.length];
+  };
+
+  const buildSwipeClone = (template, initialOffset) => {
+    removeSwipeClone();
+    const clone = board.cloneNode(false);
+    clone.classList.add(swipeCloneClass);
+    clone.dataset.currentDay = String(template.dataset.dayView || '').trim();
+    clone.dataset.weekDays = clone.dataset.currentDay;
+    clone.dataset.weekdayOrders = String(template.dataset.weekdayOrder || '').trim();
+    clone.replaceChildren(template.content.cloneNode(true));
+    clone.setAttribute('aria-hidden', 'true');
+    clone.style.transition = 'none';
+    clone.style.transform = `translate3d(${initialOffset}px, 0, 0)`;
+    clone.style.opacity = '0.93';
+    weekShell.appendChild(clone);
+    return clone;
   };
 
   const animateBackToRest = () => {
@@ -2184,30 +2218,42 @@ CARD_TEMPLATE = """
     const exitOffset = exitDistance * directionSign;
     const entryOffset = -entryDistance * directionSign;
     const exitOpacity = Math.max(0.86, Math.min(currentBoardOpacity, 0.96) - 0.06);
+    const incomingClone = buildSwipeClone(template, entryOffset);
     isAnimating = true;
     window.__aaCloseWeekTooltips?.();
-    setBoardState({
-      offset: exitOffset,
-      opacity: exitOpacity,
-      transition: 'transform 130ms cubic-bezier(0.22, 1, 0.36, 1), opacity 130ms ease',
-    });
-    window.setTimeout(() => {
+    const finishSwipeAnimation = () => {
       replaceBoardContent(template);
-      setBoardState({ offset: entryOffset, opacity: 0.93, transition: 'none' });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setBoardState({
-            offset: 0,
-            opacity: 1,
-            transition: 'transform 170ms cubic-bezier(0.22, 1, 0.36, 1), opacity 170ms ease',
-          });
-          scheduleBoardCleanup(220);
-          window.setTimeout(() => {
-            isAnimating = false;
-          }, 180);
-        });
+      setBoardState({ offset: 0, opacity: 1, transition: 'none' });
+      removeSwipeClone();
+      isAnimating = false;
+    };
+
+    requestAnimationFrame(() => {
+      setBoardState({
+        offset: exitOffset,
+        opacity: exitOpacity,
+        transition: 'transform 185ms cubic-bezier(0.22, 1, 0.36, 1), opacity 185ms ease',
       });
-    }, 120);
+      incomingClone.style.transition = 'transform 185ms cubic-bezier(0.22, 1, 0.36, 1), opacity 185ms ease';
+      incomingClone.style.transform = 'translate3d(0, 0, 0)';
+      incomingClone.style.opacity = '1';
+    });
+
+    const finalizeOnTransitionEnd = (event) => {
+      if (event.target !== incomingClone || event.propertyName !== 'transform') {
+        return;
+      }
+      incomingClone.removeEventListener('transitionend', finalizeOnTransitionEnd);
+      finishSwipeAnimation();
+    };
+
+    incomingClone.addEventListener('transitionend', finalizeOnTransitionEnd);
+    window.setTimeout(() => {
+      if (isAnimating) {
+        incomingClone.removeEventListener('transitionend', finalizeOnTransitionEnd);
+        finishSwipeAnimation();
+      }
+    }, 260);
   };
 
   const getTrackedTouch = (touchList) => {
@@ -2226,6 +2272,7 @@ CARD_TEMPLATE = """
       return;
     }
     clearCleanupTimer();
+    removeSwipeClone();
     const touch = event.touches[0];
     activeTouchId = touch.identifier;
     touchStartX = touch.clientX;
