@@ -380,6 +380,32 @@ def build_app(db_path: Path) -> Flask:
 
         return df
 
+    def build_single_day_week_views(source_df: pd.DataFrame, filters: dict[str, str]) -> list[dict[str, object]]:
+        week_days = [day for day, _ in AA_DAY_PAGES]
+        current_weekday = normalize_space(filters.get("weekday"))
+        if current_weekday not in week_days:
+            return []
+
+        all_days_filters = dict(filters)
+        all_days_filters["weekday"] = ""
+        filtered = filter_df(source_df, all_days_filters)
+        row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
+        views: list[dict[str, object]] = []
+        for index, day in enumerate(week_days):
+            previous_day = week_days[(index - 1) % len(week_days)]
+            next_day = week_days[(index + 1) % len(week_days)]
+            views.append(
+                {
+                    "day": day,
+                    "weekday_order": WEEKDAY_ORDER[day],
+                    "slots": build_week_view(row_dicts, [day]),
+                    "query_string": build_query_string(filters, overrides={"weekday": day, "view": "week"}),
+                    "previous_query_string": build_query_string(filters, overrides={"weekday": previous_day, "view": "week"}),
+                    "next_query_string": build_query_string(filters, overrides={"weekday": next_day, "view": "week"}),
+                }
+            )
+        return views
+
     def render_page(*, admin_mode: bool) -> Response:
         df = load_dataframe(db_path)
         favorite_cookie = read_json_cookie(FAVORITES_COOKIE_NAME) or []
@@ -407,6 +433,7 @@ def build_app(db_path: Path) -> Flask:
         row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
         displayed_week_days = [filters["weekday"]] if filters["weekday"] in [day for day, _ in AA_DAY_PAGES] else [day for day, _ in AA_DAY_PAGES]
         displayed_week_day_orders = [WEEKDAY_ORDER[day] for day in displayed_week_days]
+        single_day_week_views = build_single_day_week_views(df, filters) if filters["view"] == "week" and len(displayed_week_days) == 1 else []
         scraped_at = df["scraped_at_utc"].iloc[0] if not df.empty else "N/A"
         options = build_filter_options(df)
         source_counts = (
@@ -444,6 +471,7 @@ def build_app(db_path: Path) -> Flask:
                 week_slots=build_week_view(row_dicts, displayed_week_days),
                 week_days=displayed_week_days,
                 week_day_orders=displayed_week_day_orders,
+                single_day_week_views=single_day_week_views,
                 week_day_count=len(displayed_week_days),
                 total_count=len(filtered),
                 scraped_at=format_scraped_at_short(scraped_at),

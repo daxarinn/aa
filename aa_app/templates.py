@@ -1,16 +1,65 @@
 from __future__ import annotations
 
 CARD_TEMPLATE = """
+{% macro render_single_day_board(day, weekday_order, slots) -%}
+<div class="now-line-status" id="nowLineStatus">
+  <span class="now-line-label" id="nowLineLabel">Núna</span>
+</div>
+<div class="now-line" id="nowLine"></div>
+<div class="week-head" aria-hidden="true"></div>
+<div class="week-head week-day-head">{{ day }}</div>
+{% if slots %}
+{% for slot in slots %}
+<div class="time-cell" data-time-label="{{ slot["time_label"] }}"><span class="time-cell-text">{{ slot["time_label"] }}</span></div>
+{% for cell in slot["cells"] %}
+<div class="week-cell{% if slot["is_compact"] %} is-compact{% endif %}">
+  {% for row in cell %}
+  <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
+    <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
+    <div class="slot-title-row">
+      <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
+      {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
+    </div>
+    <p class="slot-summary">{{ row["summary_display"] }}</p>
+    <div class="slot-tooltip">
+      <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
+      {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
+      {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
+      {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
+      {% if row["location_text"] %}<p class="slot-meta">{{ row["location_text"] }}</p>{% endif %}
+      {% if row["venue_text"] %}<p class="slot-meta">{{ row["venue_text"] }}</p>{% endif %}
+      <div class="slot-tooltip-pills">
+        <span>{{ row["source"] }}</span>
+        <span>{{ row["fellowship_display"] }}</span>
+        {% if row["format"] %}<span>{{ row["format"] }}</span>{% endif %}
+        {% if row["gender_restriction"] %}<span>{{ row["gender_restriction"] }}</span>{% endif %}
+        {% if row["access_restriction"] %}<span>{{ row["access_restriction"] }}</span>{% endif %}
+      </div>
+      {% if row["zoom_url"] %}<a class="slot-link" href="{{ row["zoom_url"] }}" target="_blank" rel="noreferrer">Opna fund</a>{% endif %}
+      <div class="slot-provenance">
+        <a href="{{ row["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
+        {% if row["source_locator"] %}<span> · {{ row["source_locator"] }}</span>{% endif %}
+      </div>
+      {% if row["source_excerpt"] %}<p class="slot-provenance">{{ row["source_excerpt"] }}</p>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endfor %}
+{% else %}
+<div class="time-cell week-empty-label" aria-hidden="true"><span class="time-cell-text">—</span></div>
+<div class="week-cell week-cell-empty">
+  <p class="mapping-meta">Engir fundir þennan dag miðað við valdar síur.</p>
+</div>
+{% endif %}
+{%- endmacro %}
 <!doctype html>
 <html lang="is">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fundaskrá</title>
-  {% if filters["view"] == "week" and week_day_count == 1 and previous_weekday_query_string and next_weekday_query_string %}
-  <link rel="prefetch" href="/?{{ previous_weekday_query_string }}" as="document">
-  <link rel="prefetch" href="/?{{ next_weekday_query_string }}" as="document">
-  {% endif %}
   <style>
     :root {
       --card: #fffdf8;
@@ -360,6 +409,15 @@ CARD_TEMPLATE = """
     }
     .week-cell.is-compact {
       min-height: 64px;
+    }
+    .week-cell-empty {
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+      text-align: center;
+    }
+    .week-empty-label {
+      opacity: 0.55;
     }
     .slot-card {
       background: white;
@@ -1296,7 +1354,10 @@ CARD_TEMPLATE = """
     {% elif filters["view"] == "week" %}
     <section class="week-shell">
       <div class="week-scroll" data-scroll-restore="week-shell">
-      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}"{% if previous_weekday_query_string %} data-prev-day-url="/?{{ previous_weekday_query_string }}"{% endif %}{% if next_weekday_query_string %} data-next-day-url="/?{{ next_weekday_query_string }}"{% endif %}>
+      <div class="week-board{% if week_day_count == 1 %} single-day{% endif %}" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}"{% if week_day_count == 1 and week_days %} data-current-day="{{ week_days[0] }}"{% endif %}>
+        {% if week_day_count == 1 %}
+        {{ render_single_day_board(week_days[0], week_day_orders[0], week_slots) }}
+        {% else %}
         <div class="now-line-status" id="nowLineStatus">
           <span class="now-line-label" id="nowLineLabel">Núna</span>
         </div>
@@ -1344,7 +1405,17 @@ CARD_TEMPLATE = """
         </div>
         {% endfor %}
         {% endfor %}
+        {% endif %}
       </div>
+      {% if week_day_count == 1 and single_day_week_views %}
+      <div class="week-day-templates" hidden aria-hidden="true">
+        {% for item in single_day_week_views %}
+        <template data-day-view="{{ item["day"] }}" data-weekday-order="{{ item["weekday_order"] }}" data-query-string="{{ item["query_string"] }}">
+          {{ render_single_day_board(item["day"], item["weekday_order"], item["slots"]) }}
+        </template>
+        {% endfor %}
+      </div>
+      {% endif %}
       </div>
     </section>
     {% else %}
@@ -1561,22 +1632,28 @@ CARD_TEMPLATE = """
     syncFavoriteButtons();
   };
 
-  document.querySelectorAll('.favorite-toggle').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      document.querySelectorAll('.slot-card.is-open').forEach((card) => {
+  const closeOpenWeekTooltips = (exceptCard = null) => {
+    document.querySelectorAll('.slot-card.is-open').forEach((card) => {
+      if (card !== exceptCard) {
         card.classList.remove('is-open');
-      });
-      const meetingId = button.getAttribute('data-meeting-id') || '';
-      if (!meetingId) return;
-      if (favoriteSet.has(meetingId)) {
-        favoriteSet.delete(meetingId);
-      } else if (favoriteSet.size < maxFavorites) {
-        favoriteSet.add(meetingId);
       }
-      persistFavorites();
     });
+  };
+
+  document.addEventListener('click', (event) => {
+    const favoriteButton = event.target.closest('.favorite-toggle');
+    if (!favoriteButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeOpenWeekTooltips();
+    const meetingId = favoriteButton.getAttribute('data-meeting-id') || '';
+    if (!meetingId) return;
+    if (favoriteSet.has(meetingId)) {
+      favoriteSet.delete(meetingId);
+    } else if (favoriteSet.size < maxFavorites) {
+      favoriteSet.add(meetingId);
+    }
+    persistFavorites();
   });
 
   if (favoritesCalendarDownload) {
@@ -1688,6 +1765,8 @@ CARD_TEMPLATE = """
     });
   }
 
+  window.__aaCloseWeekTooltips = closeOpenWeekTooltips;
+  window.__aaSyncFavoriteButtons = syncFavoriteButtons;
   syncFavoriteButtons();
 })();
 
@@ -1755,13 +1834,12 @@ CARD_TEMPLATE = """
 })();
 
 (function() {
-  const cards = Array.from(document.querySelectorAll('.slot-card'));
   const weekShell = document.querySelector('.week-scroll');
-  if (!cards.length) return;
+  if (!weekShell) return;
   const suppressFocusOpenUntil = new WeakMap();
 
   const closeCards = (exceptCard = null) => {
-    cards.forEach((card) => {
+    document.querySelectorAll('.slot-card.is-open').forEach((card) => {
       if (card !== exceptCard) {
         card.classList.remove('is-open');
       }
@@ -1803,36 +1881,45 @@ CARD_TEMPLATE = """
     }
   };
 
-  cards.forEach((card) => {
-    card.addEventListener('click', (event) => {
-      if (event.target.closest('a, button')) return;
-      const willOpen = !card.classList.contains('is-open');
-      closeCards(card);
-      card.classList.toggle('is-open', willOpen);
-      if (willOpen) {
-        positionTooltip(card);
-      } else {
-        suppressFocusOpenUntil.set(card, Date.now() + 250);
-        if (typeof card.blur === 'function') {
-          card.blur();
-        }
-      }
-    });
-
-    card.addEventListener('mouseenter', () => positionTooltip(card));
-    card.addEventListener('focusin', () => {
-      if ((suppressFocusOpenUntil.get(card) || 0) > Date.now()) {
-        return;
-      }
-      card.classList.add('is-open');
+  document.addEventListener('click', (event) => {
+    const card = event.target.closest('.slot-card');
+    if (!card) {
+      closeCards();
+      return;
+    }
+    if (event.target.closest('.favorite-toggle, a, button')) return;
+    if (event.target.closest('.slot-tooltip')) return;
+    const willOpen = !card.classList.contains('is-open');
+    closeCards(card);
+    card.classList.toggle('is-open', willOpen);
+    if (willOpen) {
       positionTooltip(card);
-    });
+      return;
+    }
+    suppressFocusOpenUntil.set(card, Date.now() + 250);
+    if (typeof card.blur === 'function') {
+      card.blur();
+    }
   });
 
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('.slot-card')) {
-      closeCards();
+  weekShell.addEventListener('mouseover', (event) => {
+    if (!event.target || window.matchMedia('(hover: hover) and (pointer: fine)').matches === false) {
+      return;
     }
+    const card = event.target.closest('.slot-card');
+    if (card) {
+      positionTooltip(card);
+    }
+  });
+
+  weekShell.addEventListener('focusin', (event) => {
+    const card = event.target.closest('.slot-card');
+    if (!card) return;
+    if ((suppressFocusOpenUntil.get(card) || 0) > Date.now()) {
+      return;
+    }
+    card.classList.add('is-open');
+    positionTooltip(card);
   });
 
   document.addEventListener('keydown', (event) => {
@@ -1842,16 +1929,18 @@ CARD_TEMPLATE = """
   });
 
   window.addEventListener('resize', () => {
-    cards.filter((card) => card.classList.contains('is-open')).forEach(positionTooltip);
+    document.querySelectorAll('.slot-card.is-open').forEach(positionTooltip);
   });
+
+  window.__aaCloseWeekTooltips = closeCards;
+  window.__aaRefreshWeekTooltips = () => {
+    document.querySelectorAll('.slot-card.is-open').forEach(positionTooltip);
+  };
 })();
 
 (function() {
   const board = document.querySelector('.week-board');
-  const line = document.getElementById('nowLine');
-  const status = document.getElementById('nowLineStatus');
-  const label = document.getElementById('nowLineLabel');
-  if (!board || !line || !status || !label) return;
+  if (!board) return;
   let initialAutoScrollDone = false;
 
   const parseMinutes = (value) => {
@@ -1859,11 +1948,6 @@ CARD_TEMPLATE = """
     if (!match) return null;
     return Number(match[1]) * 60 + Number(match[2]);
   };
-
-  const visibleDayOrders = (board.dataset.weekdayOrders || '')
-    .split('|')
-    .map((item) => Number(item.trim()))
-    .filter((value) => !Number.isNaN(value));
 
   const formatter = new Intl.DateTimeFormat('is-IS', {
     hour: '2-digit',
@@ -1876,18 +1960,31 @@ CARD_TEMPLATE = """
     timeZone: 'Atlantic/Reykjavik'
   });
   const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  const visibleDayOrders = () => (board.dataset.weekdayOrders || '')
+    .split('|')
+    .map((item) => Number(item.trim()))
+    .filter((value) => !Number.isNaN(value));
+
+  const getNowLineElements = () => ({
+    line: board.querySelector('#nowLine'),
+    status: board.querySelector('#nowLineStatus'),
+    label: board.querySelector('#nowLineLabel'),
+  });
 
   const attemptInitialAutoScroll = () => {
+    const { line } = getNowLineElements();
     if (
-      initialAutoScrollDone
-      || (window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
+      !line
       || !line.classList.contains('visible')
+      || initialAutoScrollDone
+      || (window.__aaScrollRestoreState && window.__aaScrollRestoreState.restored)
     ) {
       return;
     }
 
     const currentWeekdayOrder = weekdayMap[weekdayFormatter.format(new Date())] || 0;
-    if (visibleDayOrders.length !== 1 || visibleDayOrders[0] !== currentWeekdayOrder) {
+    const currentVisibleDayOrders = visibleDayOrders();
+    if (currentVisibleDayOrders.length !== 1 || currentVisibleDayOrders[0] !== currentWeekdayOrder) {
       return;
     }
 
@@ -1900,13 +1997,16 @@ CARD_TEMPLATE = """
   };
 
   function updateNowLine() {
+    const { line, status, label } = getNowLineElements();
+    if (!line || !status || !label) return;
     const parts = formatter.formatToParts(new Date());
     const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
     const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
     const weekdayOrder = weekdayMap[weekdayFormatter.format(new Date())] || 0;
     const nowMinutes = (hour * 60) + minute;
+    const currentVisibleDayOrders = visibleDayOrders();
 
-    if (visibleDayOrders.length === 1 && visibleDayOrders[0] !== weekdayOrder) {
+    if (currentVisibleDayOrders.length === 1 && currentVisibleDayOrders[0] !== weekdayOrder) {
       line.classList.remove('visible');
       status.classList.remove('visible');
       return;
@@ -1954,6 +2054,7 @@ CARD_TEMPLATE = """
     attemptInitialAutoScroll();
   }
 
+  window.__aaUpdateNowLine = updateNowLine;
   updateNowLine();
   requestAnimationFrame(() => requestAnimationFrame(attemptInitialAutoScroll));
   window.setTimeout(attemptInitialAutoScroll, 250);
@@ -1967,21 +2068,17 @@ CARD_TEMPLATE = """
   const board = document.querySelector('.week-board.single-day');
   const weekShell = document.querySelector('.week-scroll');
   if (!board || !weekShell) return;
-  const swipeStateKey = 'aa-day-swipe-state';
-
+  const dayTemplates = new Map(
+    Array.from(document.querySelectorAll('template[data-day-view]'))
+      .map((template) => [String(template.dataset.dayView || '').trim(), template])
+      .filter(([day]) => day)
+  );
   const allWeekDays = (board.dataset.allWeekDays || '')
     .split('|')
     .map((item) => item.trim())
     .filter(Boolean);
-  const visibleWeekDays = (board.dataset.weekDays || '')
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const previousDayUrl = (board.dataset.prevDayUrl || '').trim();
-  const nextDayUrl = (board.dataset.nextDayUrl || '').trim();
-  const currentWeekday = visibleWeekDays[0];
-  const currentIndex = allWeekDays.indexOf(currentWeekday);
-  if (!currentWeekday || currentIndex === -1 || allWeekDays.length < 2) return;
+  let currentWeekday = String(board.dataset.currentDay || board.dataset.weekDays || '').split('|')[0]?.trim() || '';
+  if (!currentWeekday || !dayTemplates.has(currentWeekday) || allWeekDays.length < 2) return;
 
   let activeTouchId = null;
   let touchStartX = null;
@@ -1992,7 +2089,8 @@ CARD_TEMPLATE = """
   let isAnimating = false;
   let cleanupTimer = null;
 
-  const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form'));
+  const weekdayField = document.getElementById('weekday');
+  const isInteractiveTarget = (target) => Boolean(target?.closest('a, button, input, select, textarea, label, form, .slot-tooltip'));
 
   const clearCleanupTimer = () => {
     if (cleanupTimer !== null) {
@@ -2026,63 +2124,73 @@ CARD_TEMPLATE = """
     axisLock = '';
   };
 
+  const setCurrentDay = (day) => {
+    currentWeekday = day;
+    board.dataset.currentDay = day;
+    board.dataset.weekDays = day;
+  };
+
+  const replaceBoardContent = (template) => {
+    board.replaceChildren(template.content.cloneNode(true));
+    board.dataset.weekdayOrders = String(template.dataset.weekdayOrder || '').trim();
+    setCurrentDay(String(template.dataset.dayView || '').trim());
+    if (weekdayField) {
+      weekdayField.value = currentWeekday;
+    }
+    const queryString = String(template.dataset.queryString || '').trim();
+    history.replaceState({ weekday: currentWeekday }, '', queryString ? `/?${queryString}` : window.location.pathname);
+    window.__aaSyncFavoriteButtons?.();
+    window.__aaUpdateNowLine?.();
+  };
+
+  const neighboringDay = (step) => {
+    const currentIndex = allWeekDays.indexOf(currentWeekday);
+    if (currentIndex === -1) return '';
+    return allWeekDays[(currentIndex + step + allWeekDays.length) % allWeekDays.length];
+  };
+
   const animateBackToRest = () => {
     setBoardState({
       offset: 0,
       opacity: 1,
-      transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease',
-    });
-    scheduleBoardCleanup();
-  };
-
-  const animateIncomingBoard = () => {
-    let payload;
-    try {
-      payload = JSON.parse(sessionStorage.getItem(swipeStateKey) || 'null');
-    } catch (_error) {
-      payload = null;
-    }
-    sessionStorage.removeItem(swipeStateKey);
-    if (!payload || !payload.direction || Math.abs(Date.now() - Number(payload.at || 0)) > 2500) {
-      return;
-    }
-
-    const shellWidth = Math.max(weekShell.clientWidth, 1);
-    const entryOffset = Math.min(Math.round(shellWidth * 0.18), 96);
-    const startOffset = payload.direction === 'left' ? entryOffset : -entryOffset;
-    setBoardState({ offset: startOffset, opacity: 0.84, transition: 'none' });
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setBoardState({
-          offset: 0,
-          opacity: 1,
-          transition: 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease',
-        });
-        scheduleBoardCleanup(320);
-      });
-    });
-  };
-
-  const navigateToWeekday = (targetUrl, swipeDirection) => {
-    if (!targetUrl) return;
-    const shellWidth = Math.max(weekShell.clientWidth, 1);
-    const exitOffset = Math.min(Math.round(shellWidth * 0.18), 96) * (swipeDirection === 'left' ? -1 : 1);
-    sessionStorage.setItem(
-      swipeStateKey,
-      JSON.stringify({
-        at: Date.now(),
-        direction: swipeDirection,
-      }),
-    );
-    isAnimating = true;
-    setBoardState({
-      offset: exitOffset,
-      opacity: 0.78,
       transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
     });
+    scheduleBoardCleanup(220);
+  };
+
+  const animateToDay = (swipeDirection) => {
+    const targetDay = neighboringDay(swipeDirection === 'left' ? 1 : -1);
+    const template = dayTemplates.get(targetDay);
+    if (!template) {
+      animateBackToRest();
+      return;
+    }
+    const shellWidth = Math.max(weekShell.clientWidth, 1);
+    const travel = Math.min(Math.round(shellWidth * 0.1), 56);
+    const exitOffset = travel * (swipeDirection === 'left' ? -1 : 1);
+    const entryOffset = travel * (swipeDirection === 'left' ? 1 : -1);
+    isAnimating = true;
+    window.__aaCloseWeekTooltips?.();
+    setBoardState({
+      offset: exitOffset,
+      opacity: 0.9,
+      transition: 'transform 120ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease',
+    });
     window.setTimeout(() => {
-      window.location.assign(targetUrl);
-    }, 170);
+      replaceBoardContent(template);
+      setBoardState({ offset: entryOffset, opacity: 0.92, transition: 'none' });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setBoardState({
+            offset: 0,
+            opacity: 1,
+            transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+          });
+          scheduleBoardCleanup(240);
+          isAnimating = false;
+        });
+      });
+    }, 110);
   };
 
   const getTrackedTouch = (touchList) => {
@@ -2094,8 +2202,6 @@ CARD_TEMPLATE = """
     }
     return null;
   };
-
-  animateIncomingBoard();
 
   weekShell.addEventListener('touchstart', (event) => {
     if (isAnimating || isInteractiveTarget(event.target) || event.touches.length !== 1) {
@@ -2130,8 +2236,9 @@ CARD_TEMPLATE = """
         axisLock = 'y';
         return;
       }
-      if (absDeltaX >= 22 && absDeltaX > absDeltaY * 1.6) {
+      if (absDeltaX >= 28 && absDeltaX > absDeltaY * 1.9) {
         axisLock = 'x';
+        window.__aaCloseWeekTooltips?.();
       } else {
         return;
       }
@@ -2142,8 +2249,8 @@ CARD_TEMPLATE = """
     }
 
     event.preventDefault();
-    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.98) * 0.42, 136);
-    const opacity = Math.max(0.84, 1 - (Math.abs(resistanceOffset) / 420));
+    const resistanceOffset = Math.sign(deltaX) * Math.min(absDeltaX * 0.86, 164);
+    const opacity = Math.max(0.88, 1 - (Math.abs(resistanceOffset) / 520));
     setBoardState({ offset: resistanceOffset, opacity, transition: 'none' });
   }, { passive: false });
 
@@ -2159,11 +2266,10 @@ CARD_TEMPLATE = """
     const deltaY = touchCurrentY - touchStartY;
     const absDeltaX = Math.abs(deltaX);
     const absDeltaY = Math.abs(deltaY);
-    const horizontalCommit = axisLock === 'x' && absDeltaX >= 96 && absDeltaX > absDeltaY * 1.7;
+    const horizontalCommit = axisLock === 'x' && absDeltaX >= 84 && absDeltaX > absDeltaY * 1.9;
 
     if (horizontalCommit) {
-      const swipeDirection = deltaX < 0 ? 'left' : 'right';
-      navigateToWeekday(deltaX < 0 ? nextDayUrl : previousDayUrl, swipeDirection);
+      animateToDay(deltaX < 0 ? 'left' : 'right');
     } else {
       animateBackToRest();
     }
