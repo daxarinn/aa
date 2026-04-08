@@ -2142,7 +2142,7 @@ CARD_TEMPLATE = """
     }
 
     event.preventDefault();
-    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.92) * 0.22, 84);
+    const resistanceOffset = Math.sign(deltaX) * Math.min(Math.pow(absDeltaX, 0.94) * 0.30, 104);
     const opacity = Math.max(0.84, 1 - (Math.abs(resistanceOffset) / 420));
     setBoardState({ offset: resistanceOffset, opacity, transition: 'none' });
   }, { passive: false });
@@ -2163,7 +2163,7 @@ CARD_TEMPLATE = """
 
     if (horizontalCommit) {
       const swipeDirection = deltaX < 0 ? 'left' : 'right';
-      navigateToWeekday(deltaX < 0 ? -1 : 1, swipeDirection);
+      navigateToWeekday(deltaX < 0 ? 1 : -1, swipeDirection);
     } else {
       animateBackToRest();
     }
