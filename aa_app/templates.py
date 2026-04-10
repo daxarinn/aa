@@ -17,6 +17,7 @@ CARD_TEMPLATE = """
   <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
     <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
     <div class="slot-title-row">
+      {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
       <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
       {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
     </div>
@@ -355,6 +356,7 @@ CARD_TEMPLATE = """
     .day-carousel {
       border-radius: 16px;
       overflow: hidden;
+      touch-action: pan-y;
     }
     .day-carousel .swiper-wrapper {
       align-items: stretch;
@@ -471,6 +473,21 @@ CARD_TEMPLATE = """
     .favorite-toggle:hover {
       border-color: #c8b27d;
     }
+    .location-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid #d8d2c6;
+      background: transparent;
+      color: #1f2937;
+      font-size: 0.98rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 28px;
+      user-select: none;
+    }
     .slot-title-row {
       display: flex;
       align-items: center;
@@ -488,6 +505,16 @@ CARD_TEMPLATE = """
       text-overflow: ellipsis;
       min-width: 0;
       flex: 1 1 auto;
+    }
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .card-title-row h2 {
+      margin: 0;
+      min-width: 0;
     }
     .live-dot {
       position: relative;
@@ -619,6 +646,7 @@ CARD_TEMPLATE = """
       box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
       z-index: 20;
       cursor: default;
+      touch-action: pan-y;
     }
     .slot-card.is-open .slot-tooltip {
       display: block;
@@ -932,6 +960,7 @@ CARD_TEMPLATE = """
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ disagreements_query_string }}">Ósamræmi</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -941,6 +970,19 @@ CARD_TEMPLATE = """
     </section>
     <section class="mapping-section">
       <article class="mapping-card">
+        <h3>Sjálfgefið icon fyrir kirkjur</h3>
+        <p class="mapping-meta">Notað fyrir alla fundarstaði þar sem staðsetning, canonical staður eða venue inniheldur <code>kirkj</code>, nema staðurinn hafi sértækt icon.</p>
+        <form class="mapping-form" method="post" action="/locations/nickname">
+          <input type="hidden" name="canonical_location_text" value="{{ church_location_icon_key }}">
+          <input type="hidden" name="nickname" value="">
+          <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
+          <input type="text" name="icon_emoji" value="{{ church_location_icon["icon_emoji"] }}" placeholder="Emoji" maxlength="8">
+          <label class="mapping-meta"><input type="checkbox" name="icon_has_bg" value="1" {% if church_location_icon["icon_bg_color"] %}checked{% endif %}> Bakgrunnur</label>
+          <input type="color" name="icon_bg_color" value="{{ church_location_icon["icon_bg_color"] or "#fff2bf" }}">
+          <button type="submit">Vista</button>
+        </form>
+      </article>
+      <article class="mapping-card">
         <h3>Skráðar staðamappanir</h3>
         {% if mapped_location_rows %}
         <table class="mapping-table">
@@ -948,7 +990,7 @@ CARD_TEMPLATE = """
             <tr>
               <th>Alias</th>
               <th>Canonical</th>
-              <th>Gælunafn</th>
+              <th>Gælunafn/icon</th>
               <th>Aðgerðir</th>
             </tr>
           </thead>
@@ -972,6 +1014,9 @@ CARD_TEMPLATE = """
                   <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
                   <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
                   <input type="text" name="nickname" value="{{ row["location_nickname"] }}" placeholder="Holtagarðar">
+                  <input type="text" name="icon_emoji" value="{{ row["location_icon_emoji"] }}" placeholder="Emoji" maxlength="8">
+                  <label class="mapping-meta"><input type="checkbox" name="icon_has_bg" value="1" {% if row["location_icon_bg_color"] %}checked{% endif %}> Bakgrunnur</label>
+                  <input type="color" name="icon_bg_color" value="{{ row["location_icon_bg_color"] or "#fff2bf" }}">
                   <button type="submit">Vista</button>
                 </form>
               </td>
@@ -986,7 +1031,7 @@ CARD_TEMPLATE = """
                   <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
                   <input type="hidden" name="nickname" value="">
                   <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
-                  <button type="submit">Hreinsa gælunafn</button>
+                  <button type="submit">Hreinsa gælunafn/icon</button>
                 </form>
               </td>
             </tr>
@@ -1012,7 +1057,7 @@ CARD_TEMPLATE = """
               <th>Fjöldi</th>
               <th>Dæmi</th>
               <th>Canonical</th>
-              <th>Gælunafn</th>
+              <th>Gælunafn/icon</th>
             </tr>
           </thead>
           <tbody>
@@ -1037,6 +1082,9 @@ CARD_TEMPLATE = """
                   <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] or cluster["suggested_canonical"] }}">
                   <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
                   <input type="text" name="nickname" value="{{ row["location_nickname"] }}" placeholder="Gula húsið">
+                  <input type="text" name="icon_emoji" value="{{ row["location_icon_emoji"] }}" placeholder="Emoji" maxlength="8">
+                  <label class="mapping-meta"><input type="checkbox" name="icon_has_bg" value="1" {% if row["location_icon_bg_color"] %}checked{% endif %}> Bakgrunnur</label>
+                  <input type="color" name="icon_bg_color" value="{{ row["location_icon_bg_color"] or "#fff2bf" }}">
                   <button type="submit">Vista</button>
                 </form>
               </td>
@@ -1059,7 +1107,7 @@ CARD_TEMPLATE = """
               <th>Fjöldi</th>
               <th>Núverandi canonical</th>
               <th>Vista canonical</th>
-              <th>Gælunafn</th>
+              <th>Gælunafn/icon</th>
             </tr>
           </thead>
           <tbody>
@@ -1087,6 +1135,9 @@ CARD_TEMPLATE = """
                   <input type="hidden" name="canonical_location_text" value="{{ row["canonical_location_text"] }}">
                   <input type="hidden" name="redirect_query" value="{{ locations_query_string }}">
                   <input type="text" name="nickname" value="{{ row["location_nickname"] }}" placeholder="Holtagarðar">
+                  <input type="text" name="icon_emoji" value="{{ row["location_icon_emoji"] }}" placeholder="Emoji" maxlength="8">
+                  <label class="mapping-meta"><input type="checkbox" name="icon_has_bg" value="1" {% if row["location_icon_bg_color"] %}checked{% endif %}> Bakgrunnur</label>
+                  <input type="color" name="icon_bg_color" value="{{ row["location_icon_bg_color"] or "#fff2bf" }}">
                   <button type="submit">Vista</button>
                 </form>
               </td>
@@ -1104,6 +1155,7 @@ CARD_TEMPLATE = """
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ disagreements_query_string }}">Ósamræmi</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -1177,6 +1229,7 @@ CARD_TEMPLATE = """
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ disagreements_query_string }}">Ósamræmi</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -1189,8 +1242,46 @@ CARD_TEMPLATE = """
         <div class="summary">
           <span>{{ duplicate_review_rows|length }} pör fundust</span>
           <span>Aðeins mismunandi source-ar</span>
-          <span>Hámark 80 pör</span>
+          <span>Hámark 160 pör</span>
+          <span>{{ duplicate_merge_rows|length }} virkir samrunar</span>
         </div>
+        {% if duplicate_merge_rows %}
+        <h4>Virkir handvirkir samrunar</h4>
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Haldið</th>
+              <th>Falið</th>
+              <th>Aðgerð</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for merge in duplicate_merge_rows %}
+            <tr>
+              <td>
+                <strong>{{ merge["canonical_name"] or merge["canonical_location"] or merge["canonical_source_uid"] }}</strong>
+                <div class="mapping-meta">{{ merge["canonical_source"] or "?" }} · {{ merge["canonical_weekday"] or "" }} {{ merge["canonical_time"] or "" }}</div>
+                {% if merge["canonical_location"] %}<div class="mapping-meta">{{ merge["canonical_location"] }}</div>{% endif %}
+                {% if merge["canonical_venue"] %}<div class="mapping-meta">{{ merge["canonical_venue"] }}</div>{% endif %}
+              </td>
+              <td>
+                <strong>{{ merge["duplicate_name"] or merge["duplicate_location"] or merge["duplicate_source_uid"] }}</strong>
+                <div class="mapping-meta">{{ merge["duplicate_source"] or "?" }} · {{ merge["duplicate_weekday"] or "" }} {{ merge["duplicate_time"] or "" }}</div>
+                {% if merge["duplicate_location"] %}<div class="mapping-meta">{{ merge["duplicate_location"] }}</div>{% endif %}
+                {% if merge["duplicate_venue"] %}<div class="mapping-meta">{{ merge["duplicate_venue"] }}</div>{% endif %}
+              </td>
+              <td>
+                <form method="post" action="/duplicates/unmerge">
+                  <input type="hidden" name="duplicate_source_uid" value="{{ merge["duplicate_source_uid"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ duplicates_query_string }}">
+                  <button type="submit">Afturkalla</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
         {% if duplicate_review_rows %}
         <table class="mapping-table">
           <thead>
@@ -1199,6 +1290,7 @@ CARD_TEMPLATE = """
               <th>Ástæður</th>
               <th>Fundur A</th>
               <th>Fundur B</th>
+              <th>Sameina</th>
             </tr>
           </thead>
           <tbody>
@@ -1226,6 +1318,7 @@ CARD_TEMPLATE = """
                   {% if item["left"]["source_locator"] %} · {{ item["left"]["source_locator"] }}{% endif %}
                 </div>
                 {% if item["left"]["source_excerpt"] %}<div class="mapping-meta">{{ item["left"]["source_excerpt"] }}</div>{% endif %}
+                <div class="mapping-meta">{{ item["left"]["source_uid"] }}</div>
               </td>
               <td>
                 <strong>{{ item["right"]["meeting_name_display"] }}</strong>
@@ -1237,6 +1330,21 @@ CARD_TEMPLATE = """
                   {% if item["right"]["source_locator"] %} · {{ item["right"]["source_locator"] }}{% endif %}
                 </div>
                 {% if item["right"]["source_excerpt"] %}<div class="mapping-meta">{{ item["right"]["source_excerpt"] }}</div>{% endif %}
+                <div class="mapping-meta">{{ item["right"]["source_uid"] }}</div>
+              </td>
+              <td>
+                <form method="post" action="/duplicates/merge">
+                  <input type="hidden" name="canonical_source_uid" value="{{ item["left"]["source_uid"] }}">
+                  <input type="hidden" name="duplicate_source_uid" value="{{ item["right"]["source_uid"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ duplicates_query_string }}">
+                  <button type="submit">Halda A</button>
+                </form>
+                <form method="post" action="/duplicates/merge">
+                  <input type="hidden" name="canonical_source_uid" value="{{ item["right"]["source_uid"] }}">
+                  <input type="hidden" name="duplicate_source_uid" value="{{ item["left"]["source_uid"] }}">
+                  <input type="hidden" name="redirect_query" value="{{ duplicates_query_string }}">
+                  <button type="submit">Halda B</button>
+                </form>
               </td>
             </tr>
             {% endfor %}
@@ -1244,6 +1352,101 @@ CARD_TEMPLATE = """
         </table>
         {% else %}
         <p class="mapping-meta">Engin sterk duplicate-pör fundust með núverandi heuristics.</p>
+        {% endif %}
+      </article>
+    </section>
+    {% elif admin_section == "disagreements" %}
+    <section class="mapping-section">
+      <article class="mapping-card">
+        <h3>Admin</h3>
+        <div class="admin-nav">
+          <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
+          <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
+          <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ disagreements_query_string }}">Ósamræmi</a>
+          <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
+          <form method="post" action="/admin/logout">
+            <button type="submit">Útskrá</button>
+          </form>
+        </div>
+      </article>
+      <article class="mapping-card">
+        <h3>Ósamræmi milli source-a</h3>
+        <p class="mapping-meta">Veldu source til að fá skýrslu sem má senda á þann aðila. Skýrslan notar sömu fuzzy pör og tvítekningayfirlitið, en sýnir bara reiti sem eru ósamhljóða við aðra líklega skráningu sama fundar.</p>
+        <form method="get" action="/admin" class="filter-grid">
+          <input type="hidden" name="admin_section" value="disagreements">
+          <div class="filter-field">
+            <label for="disagreement_source">Source fyrir skýrslu</label>
+            <select id="disagreement_source" name="disagreement_source" onchange="this.form.submit()">
+              <option value="" {% if not selected_disagreement_source %}selected{% endif %}>Allir source-ar</option>
+              {% for item in source_disagreement_options %}
+              <option value="{{ item["source"] }}" {% if selected_disagreement_source == item["source"] %}selected{% endif %}>{{ item["source"] }} ({{ item["count"] }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-field">
+            <label>&nbsp;</label>
+            <button type="submit">Sækja skýrslu</button>
+          </div>
+        </form>
+        <div class="summary">
+          <span>{{ source_disagreement_rows|length }} atriði</span>
+          {% if selected_disagreement_source %}<span>Source: {{ selected_disagreement_source }}</span>{% else %}<span>Allir source-ar</span>{% endif %}
+          <span>Forgangur: al-anon, coda, fjarfundir/12sporahusid, gula, aa.is</span>
+          <span>Hámark 240 atriði</span>
+          <a href="/admin/disagreements.csv{% if disagreements_csv_query_string %}?{{ disagreements_csv_query_string }}{% endif %}">Sækja CSV</a>
+        </div>
+        {% if source_disagreement_rows %}
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Fundur í völdum source</th>
+              <th>Samanburðarfundur</th>
+              <th>Ósamræmi</th>
+              <th>Match</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in source_disagreement_rows %}
+            <tr>
+              <td>
+                <strong>{{ item["target"]["meeting_name_display"] }}</strong>
+                <div class="mapping-meta">{{ item["target"]["source"] }}{% if item["target"]["source_page_url"] %} · <a href="{{ item["target"]["source_page_url"] }}" target="_blank" rel="noreferrer">Uppruni</a>{% endif %}</div>
+                <div class="mapping-meta">{{ item["target"]["weekday_is"] }} {{ item["target"]["time_display"] }}</div>
+                {% if item["target"]["location_display"] %}<div class="mapping-meta">{{ item["target"]["location_display"] }}</div>{% endif %}
+                <div class="mapping-meta">{{ item["target"]["venue_text"] }}</div>
+                {% if item["target"]["source_locator"] %}<div class="mapping-meta">{{ item["target"]["source_locator"] }}</div>{% endif %}
+              </td>
+              <td>
+                <strong>{{ item["comparison"]["meeting_name_display"] }}</strong>
+                <div class="mapping-meta">{{ item["comparison"]["source"] }}{% if item["comparison"]["source_page_url"] %} · <a href="{{ item["comparison"]["source_page_url"] }}" target="_blank" rel="noreferrer">Uppruni</a>{% endif %}</div>
+                <div class="mapping-meta">{{ item["comparison"]["weekday_is"] }} {{ item["comparison"]["time_display"] }}</div>
+                {% if item["comparison"]["location_display"] %}<div class="mapping-meta">{{ item["comparison"]["location_display"] }}</div>{% endif %}
+                <div class="mapping-meta">{{ item["comparison"]["venue_text"] }}</div>
+                {% if item["comparison"]["source_locator"] %}<div class="mapping-meta">{{ item["comparison"]["source_locator"] }}</div>{% endif %}
+              </td>
+              <td>
+                {% for diff in item["disagreements"] %}
+                <div class="mapping-meta">
+                  <strong>{{ diff["label"] }}</strong><br>
+                  {{ item["target"]["source"] }}: {{ diff["target_value"] }}<br>
+                  {{ item["comparison"]["source"] }}: {{ diff["comparison_value"] }}
+                </div>
+                {% endfor %}
+              </td>
+              <td>
+                <strong>{{ item["confidence_label"] }}</strong>
+                <div class="mapping-meta">Score {{ item["score"] }}</div>
+                {% for reason in item["match_reasons"] %}
+                <div class="mapping-meta">{{ reason }}</div>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="mapping-meta">Engin source-ósamræmi fundust fyrir valið.</p>
         {% endif %}
       </article>
     </section>
@@ -1255,6 +1458,7 @@ CARD_TEMPLATE = """
           <a href="/admin?{{ admin_query_string }}">Yfirlit</a>
           <a href="/admin?{{ locations_query_string }}">Staðamöppun</a>
           <a href="/admin?{{ duplicates_query_string }}">Tvítektir</a>
+          <a href="/admin?{{ disagreements_query_string }}">Ósamræmi</a>
           <a href="/admin?{{ church_query_string }}">Kirkjuskráning</a>
           <form method="post" action="/admin/logout">
             <button type="submit">Útskrá</button>
@@ -1400,6 +1604,7 @@ CARD_TEMPLATE = """
           <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
             <div class="slot-title-row">
+              {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
               <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
               {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
             </div>
@@ -1448,7 +1653,10 @@ CARD_TEMPLATE = """
           {% if row["access_restriction"] %}<span class="pill">{{ row["access_restriction"] }}</span>{% endif %}
           {% if row["format"] %}<span class="pill">{{ row["format"] }}</span>{% endif %}
         </div>
-        <h2>{{ row["meeting_name_display"] }}</h2>
+        <div class="card-title-row">
+          {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
+          <h2>{{ row["meeting_name_display"] }}</h2>
+        </div>
         {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
         {% if row["subtitle"] %}<p class="line"><strong>Undirlína:</strong> {{ row["subtitle"] }}</p>{% endif %}
         {% if row["location_nickname"] %}<p class="line"><strong>Gælunafn:</strong> {{ row["location_nickname"] }}</p>{% endif %}
@@ -2176,7 +2384,12 @@ CARD_TEMPLATE = """
     loop: true,
     speed: 235,
     threshold: 10,
-    touchAngle: 30,
+    touchAngle: 24,
+    touchStartPreventDefault: false,
+    touchMoveStopPropagation: false,
+    preventClicks: false,
+    preventClicksPropagation: false,
+    noSwipingSelector: '.slot-tooltip, .slot-tooltip *, a, button, input, select, textarea, form',
     resistanceRatio: 0.2,
     longSwipesRatio: 0.18,
     longSwipesMs: 250,
@@ -2187,7 +2400,10 @@ CARD_TEMPLATE = """
       init(instance) {
         syncFromSwiper(instance);
       },
-      touchStart() {
+      touchStart(_instance, event) {
+        if (event?.target?.closest?.('.slot-tooltip')) {
+          return;
+        }
         window.__aaCloseWeekTooltips?.();
       },
       slideChangeTransitionStart() {

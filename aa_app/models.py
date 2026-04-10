@@ -3,6 +3,21 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
+
+def _uid_part(value: str | None) -> str:
+    if value is None:
+        return ""
+    text = " ".join(str(value).replace("\xa0", " ").split()).strip()
+    if text.casefold() in {"nan", "n/a", "none", "null", "nat"}:
+        return ""
+    return text
+
+
+def _stored_value(value: str | None) -> str | None:
+    text = _uid_part(value)
+    return text or None
+
+
 @dataclass
 class MeetingRecord:
     source: str
@@ -36,11 +51,11 @@ class MeetingRecord:
             [
                 self.source,
                 self.weekday_is,
-                self.time_display or "",
-                self.meeting_name or "",
-                self.location_text or "",
-                self.venue_text or "",
-                self.zoom_meeting_id or "",
+                _uid_part(self.time_display),
+                _uid_part(self.meeting_name),
+                _uid_part(self.location_text),
+                _uid_part(self.venue_text),
+                _uid_part(self.zoom_meeting_id),
             ]
         )
         return hashlib.sha1(key.encode("utf-8")).hexdigest()
@@ -54,22 +69,22 @@ class MeetingRecord:
             "scraped_at_utc": self.scraped_at_utc,
             "weekday_is": self.weekday_is,
             "weekday_order": self.weekday_order,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "time_display": self.time_display,
-            "meeting_name": self.meeting_name,
-            "subtitle": self.subtitle,
-            "fellowship": self.fellowship,
-            "format": self.format,
-            "location_text": self.location_text,
-            "venue_text": self.venue_text,
-            "zoom_url": self.zoom_url,
-            "zoom_meeting_id": self.zoom_meeting_id,
-            "zoom_passcode": self.zoom_passcode,
-            "gender_restriction": self.gender_restriction,
-            "access_restriction": self.access_restriction,
-            "recurrence_hint": self.recurrence_hint,
-            "notes": self.notes,
+            "start_time": _stored_value(self.start_time),
+            "end_time": _stored_value(self.end_time),
+            "time_display": _uid_part(self.time_display),
+            "meeting_name": _stored_value(self.meeting_name),
+            "subtitle": _stored_value(self.subtitle),
+            "fellowship": _stored_value(self.fellowship),
+            "format": _stored_value(self.format),
+            "location_text": _stored_value(self.location_text),
+            "venue_text": _stored_value(self.venue_text),
+            "zoom_url": _stored_value(self.zoom_url),
+            "zoom_meeting_id": _stored_value(self.zoom_meeting_id),
+            "zoom_passcode": _stored_value(self.zoom_passcode),
+            "gender_restriction": _stored_value(self.gender_restriction),
+            "access_restriction": _stored_value(self.access_restriction),
+            "recurrence_hint": _stored_value(self.recurrence_hint),
+            "notes": _stored_value(self.notes),
             "tags_json": self.tags_json,
             "raw_json": self.raw_json,
         }

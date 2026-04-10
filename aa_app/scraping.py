@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import json
@@ -18,6 +19,7 @@ from .config import (
     CODA_MEETINGS_URL,
     FJAR_DAY_PAGES,
     GULA_ALL_MEETINGS_URL,
+    SOURCE_PRIORITIES,
     TWELVE_STEP_HOUSE_MEETINGS_URL,
     WEEKDAY_ORDER,
 )
@@ -51,15 +53,7 @@ from .storage import (
 )
 
 def source_priority(record: MeetingRecord) -> int:
-    priorities = {
-        "al-anon.is": 5,
-        "coda.is": 4,
-        "fjarfundir.org": 3,
-        "12sporahusid.is": 3,
-        "gula.is": 2,
-        "aa.is": 1,
-    }
-    return priorities.get(record.source, 0)
+    return SOURCE_PRIORITIES.get(record.source, 0)
 
 
 def source_merge_score(record: MeetingRecord) -> tuple[int, int]:
@@ -93,13 +87,111 @@ def record_overlap_keys(record: MeetingRecord) -> set[tuple[str, ...]]:
     venue_key = normalized_location_key(normalize_space(record.venue_text))
     meeting_key = normalize_space(record.meeting_name).casefold()
 
-    if location_key and venue_key:
-        keys.add(("venue", day_key, time_key, fellowship_key, location_key, venue_key))
     if meeting_key and location_key:
         keys.add(("meeting_location", day_key, time_key, fellowship_key, meeting_key, location_key))
+        if venue_key:
+            keys.add(("meeting_location_venue", day_key, time_key, fellowship_key, meeting_key, location_key, venue_key))
     if meeting_key and venue_key:
         keys.add(("meeting_venue", day_key, time_key, fellowship_key, meeting_key, venue_key))
     return keys
+
+
+def gender_merge_bucket(record: MeetingRecord) -> str:
+    gender = normalize_space(record.gender_restriction).casefold()
+    if gender == "konur":
+        return "women"
+    if gender == "karlar":
+        return "men"
+    return "mixed_or_unspecified"
+
+
+def meeting_name_is_generic(value: str | None) -> bool:
+    text = normalize_space(value).casefold()
+    return not text or text in {
+        "aa fundur",
+        "al-anon fundur",
+        "ónefndur fundur",
+        "onefndur fundur",
+        "fundur",
+    }
+
+
+def text_similarity(left: str | None, right: str | None) -> float:
+    left_text = normalize_space(left).casefold()
+    right_text = normalize_space(right).casefold()
+    if not left_text or not right_text:
+        return 0.0
+    return SequenceMatcher(None, left_text, right_text).ratio()
+
+
+def explicit_room_key(value: str | None) -> str:
+    text = normalize_space(value).casefold()
+    if not text:
+        return ""
+    match = re.search(r"\b(?:salur|sal|room)\s*([a-z0-9]+)\b", text)
+    if match:
+        return match.group(1)
+    match = re.search(r"\((?:salur|sal|room)\s*([a-z0-9]+)\)", text)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def records_can_auto_merge(left: MeetingRecord, right: MeetingRecord) -> bool:
+    left_gender = gender_merge_bucket(left)
+    right_gender = gender_merge_bucket(right)
+    if left_gender != right_gender:
+        return False
+    left_room = explicit_room_key(left.venue_text)
+    right_room = explicit_room_key(right.venue_text)
+    if left_room and right_room and left_room != right_room:
+        return False
+    return True
+
+
+def records_can_fuzzy_auto_merge(left: MeetingRecord, right: MeetingRecord) -> bool:
+    if left.source == right.source or not records_can_auto_merge(left, right):
+        return False
+    if normalize_space(left.weekday_is) != normalize_space(right.weekday_is):
+        return False
+    left_time = pad_time(left.start_time or left.time_display) or normalize_space(left.time_display)
+    right_time = pad_time(right.start_time or right.time_display) or normalize_space(right.time_display)
+    if left_time != right_time:
+        return False
+    if normalize_space(left.fellowship).casefold() != normalize_space(right.fellowship).casefold():
+        return False
+    left_format = normalize_space(left.format)
+    right_format = normalize_space(right.format)
+    if left_format and right_format and left_format != right_format:
+        return False
+
+    left_location_key = normalized_location_key(normalize_space(left.location_text))
+    right_location_key = normalized_location_key(normalize_space(right.location_text))
+    location_match = bool(left_location_key and left_location_key == right_location_key)
+    left_venue_key = normalized_location_key(normalize_space(left.venue_text))
+    right_venue_key = normalized_location_key(normalize_space(right.venue_text))
+    venue_match = bool(left_venue_key and left_venue_key == right_venue_key)
+    left_room = explicit_room_key(left.venue_text)
+    right_room = explicit_room_key(right.venue_text)
+    same_explicit_room = bool(left_room and right_room and left_room == right_room)
+    name_similarity = text_similarity(left.meeting_name, right.meeting_name)
+    location_similarity = max(
+        text_similarity(left.location_text, right.location_text),
+        text_similarity(left.venue_text, right.venue_text),
+    )
+    has_generic_name = meeting_name_is_generic(left.meeting_name) or meeting_name_is_generic(right.meeting_name)
+
+    if has_generic_name:
+        return venue_match and same_explicit_room
+    if venue_match and name_similarity >= 0.70:
+        return True
+    if location_match and same_explicit_room and name_similarity >= 0.70:
+        return True
+    if location_match and name_similarity >= 0.86:
+        return True
+    if location_similarity >= 0.90 and name_similarity >= 0.88:
+        return True
+    return False
 
 
 def extract_aa_description(tag) -> tuple[str | None, str | None, str | None, str | None, list[str]]:
@@ -455,7 +547,17 @@ def dedupe_preferred_source_records(records: list[MeetingRecord]) -> list[Meetin
 
     for record in sorted(records, key=source_merge_score, reverse=True):
         keys = record_overlap_keys(record)
-        existing_indexes = {key_to_index[key] for key in keys if key in key_to_index}
+        existing_indexes = {
+            key_to_index[key]
+            for key in keys
+            if key in key_to_index and records_can_auto_merge(kept[key_to_index[key]], record)
+        }
+        if not existing_indexes:
+            existing_indexes = {
+                index
+                for index, kept_record in enumerate(kept)
+                if records_can_fuzzy_auto_merge(kept_record, record)
+            }
         if not existing_indexes:
             kept.append(record)
             record_index = len(kept) - 1
@@ -995,7 +1097,7 @@ def scrape_twelve_step_house(session: requests.Session, scraped_at_utc: str) -> 
                 zoom_meeting_id=None,
                 zoom_passcode=None,
                 gender_restriction=gender,
-                access_restriction=inferred_access,
+                access_restriction=inferred_access or "Lokaður",
                 recurrence_hint=None,
                 notes=None,
                 tags_json=json.dumps([value for value in [room] if value], ensure_ascii=False),

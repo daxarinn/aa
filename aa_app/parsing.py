@@ -403,11 +403,11 @@ def classify_format(location_text: str | None, venue_text: str | None, zoom_url:
 
 def infer_restrictions_from_texts(*texts: object) -> tuple[str | None, str | None]:
     gender: str | None = None
-    access: str | None = None
+    access: str | None = "Lokaður"
     combined = " ".join(normalize_space(text) for text in texts if normalize_space(text))
     lowered = combined.casefold()
     if not lowered:
-        return None, None
+        return None, access
     if "karla" in lowered or "karlar" in lowered:
         gender = "Karlar"
     elif "kvenna" in lowered or "konur" in lowered or "kvk" in lowered:

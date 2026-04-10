@@ -62,6 +62,15 @@ SIZE_BIN_OPTIONS = [
     {"value": "40+", "label": "40+", "midpoint": 45.0},
 ]
 SIZE_BIN_VALUES = {item["value"] for item in SIZE_BIN_OPTIONS}
+CHURCH_LOCATION_ICON_KEY = "__church_locations__"
+SOURCE_PRIORITIES = {
+    "al-anon.is": 5,
+    "coda.is": 4,
+    "fjarfundir.org": 3,
+    "12sporahusid.is": 3,
+    "gula.is": 2,
+    "aa.is": 1,
+}
 
 
 SCHEMA_SQL = """
@@ -108,6 +117,8 @@ CREATE TABLE IF NOT EXISTS location_aliases (
 CREATE TABLE IF NOT EXISTS location_metadata (
     canonical_location_text TEXT PRIMARY KEY,
     nickname TEXT,
+    icon_emoji TEXT,
+    icon_bg_color TEXT,
     updated_at_utc TEXT NOT NULL
 );
 
@@ -135,6 +146,16 @@ CREATE TABLE IF NOT EXISTS meeting_size_reports (
     reported_at_utc TEXT NOT NULL,
     PRIMARY KEY (source_uid, client_id)
 );
+
+CREATE TABLE IF NOT EXISTS meeting_merges (
+    duplicate_source_uid TEXT PRIMARY KEY,
+    canonical_source_uid TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_merges_canonical
+    ON meeting_merges (canonical_source_uid);
 
 CREATE TABLE IF NOT EXISTS client_visits (
     visit_id INTEGER PRIMARY KEY AUTOINCREMENT,

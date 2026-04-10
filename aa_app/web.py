@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import json
 import os
 import secrets
@@ -12,9 +14,10 @@ from urllib.parse import unquote, urlencode
 import pandas as pd
 from flask import Flask, Response, redirect, request, session
 
-from .admin_tools import build_duplicate_review_rows
+from .admin_tools import build_duplicate_review_rows, build_source_disagreement_options, build_source_disagreement_rows
 from .config import (
     AA_DAY_PAGES,
+    CHURCH_LOCATION_ICON_KEY,
     CLIENT_COOKIE_NAME,
     FAVORITES_COOKIE_NAME,
     FILTERS_COOKIE_NAME,
@@ -26,11 +29,14 @@ from .storage import (
     build_favorites_calendar_ics,
     build_location_clusters,
     build_location_review_rows,
+    delete_meeting_merge,
     delete_manual_event,
     load_dataframe,
     load_favorite_calendar_rows,
     load_favorite_calendar_subscription,
+    load_location_metadata,
     load_manual_events,
+    load_meeting_merges,
     load_user_size_reports,
     load_visit_summary,
     log_client_visit,
@@ -38,6 +44,7 @@ from .storage import (
     save_location_mapping,
     save_location_nickname,
     save_manual_event,
+    save_meeting_merge,
     save_meeting_size_report,
     upsert_favorite_calendar_subscription,
 )
@@ -420,8 +427,9 @@ def build_app(db_path: Path) -> Flask:
         df["current_size_bin"] = df["source_uid"].fillna("").astype(str).map(user_size_reports).fillna("")
         filters = request_filters()
         admin_section = request.args.get("admin_section", "analytics").strip() or "analytics"
-        if admin_section not in {"analytics", "locations", "duplicates", "church"}:
+        if admin_section not in {"analytics", "locations", "duplicates", "disagreements", "church"}:
             admin_section = "analytics"
+        selected_disagreement_source = normalize_space(request.args.get("disagreement_source", ""))
         if admin_mode:
             filters["view"] = "admin"
         elif filters["view"] in {"locations", "church", "admin"}:
@@ -443,6 +451,13 @@ def build_app(db_path: Path) -> Flask:
             .reset_index(name="count")
             .itertuples(index=False, name=None)
         )
+        source_disagreement_options = build_source_disagreement_options(df) if admin_mode else []
+        valid_disagreement_sources = {
+            normalize_space(item.get("source"))
+            for item in source_disagreement_options
+        }
+        if selected_disagreement_source not in valid_disagreement_sources:
+            selected_disagreement_source = ""
         csv_query_string = build_query_string(filters, exclude={"view"})
         list_query_string = build_query_string(filters, overrides={"view": "list"})
         week_query_string = build_query_string(filters, overrides={"view": "week"})
@@ -450,15 +465,37 @@ def build_app(db_path: Path) -> Flask:
         admin_query_string = build_query_string(filters, overrides={"admin_section": admin_section}, exclude={"view"})
         locations_query_string = build_query_string(filters, overrides={"admin_section": "locations"}, exclude={"view"})
         duplicates_query_string = build_query_string(filters, overrides={"admin_section": "duplicates"}, exclude={"view"})
+        disagreements_query_string = build_query_string(
+            filters,
+            overrides={"admin_section": "disagreements", "disagreement_source": selected_disagreement_source},
+            exclude={"view"},
+        )
+        disagreements_csv_query_string = urlencode(
+            {"disagreement_source": selected_disagreement_source}
+            if selected_disagreement_source
+            else {}
+        )
         church_query_string = build_query_string(filters, overrides={"admin_section": "church"}, exclude={"view"})
         current_query_string = request.query_string.decode("utf-8", errors="ignore").strip()
         location_rows = build_location_review_rows(df[df["source"].fillna("") != "kirkja"], "")
         location_clusters = build_location_clusters(location_rows)
-        duplicate_review_rows = build_duplicate_review_rows(df, max_pairs=80) if admin_mode and admin_section == "duplicates" else []
+        church_location_icon = load_location_metadata(db_path, CHURCH_LOCATION_ICON_KEY) if admin_mode and admin_section == "locations" else {}
+        duplicate_review_rows = build_duplicate_review_rows(df, max_pairs=160) if admin_mode and admin_section == "duplicates" else []
+        duplicate_merge_rows = load_meeting_merges(db_path) if admin_mode and admin_section == "duplicates" else []
+        source_disagreement_rows = (
+            build_source_disagreement_rows(df, selected_source=selected_disagreement_source, max_groups=240)
+            if admin_mode and admin_section == "disagreements"
+            else []
+        )
         manual_events = load_manual_events(db_path)
         visit_summary_rows, recent_visit_rows, visit_totals = load_visit_summary(db_path)
         mapped_location_rows = [
-            row for row in location_rows if int(row.get("has_location_mapping", 0)) or normalize_space(row.get("location_nickname"))
+            row
+            for row in location_rows
+            if int(row.get("has_location_mapping", 0))
+            or normalize_space(row.get("location_nickname"))
+            or normalize_space(row.get("location_icon_emoji"))
+            or normalize_space(row.get("location_icon_bg_color"))
         ]
         edit_event_id = request.args.get("edit_event_id", "").strip()
         church_edit_event = next(
@@ -486,6 +523,8 @@ def build_app(db_path: Path) -> Flask:
                 admin_query_string=admin_query_string,
                 locations_query_string=locations_query_string,
                 duplicates_query_string=duplicates_query_string,
+                disagreements_query_string=disagreements_query_string,
+                disagreements_csv_query_string=disagreements_csv_query_string,
                 church_query_string=church_query_string,
                 current_query_string=current_query_string,
                 default_weekday=current_iceland_weekday(),
@@ -494,7 +533,13 @@ def build_app(db_path: Path) -> Flask:
                 client_cookie_name=CLIENT_COOKIE_NAME,
                 location_rows=location_rows,
                 location_clusters=location_clusters,
+                church_location_icon=church_location_icon,
+                church_location_icon_key=CHURCH_LOCATION_ICON_KEY,
                 duplicate_review_rows=duplicate_review_rows,
+                duplicate_merge_rows=duplicate_merge_rows,
+                source_disagreement_options=source_disagreement_options,
+                selected_disagreement_source=selected_disagreement_source,
+                source_disagreement_rows=source_disagreement_rows,
                 mapped_location_rows=mapped_location_rows,
                 manual_events=manual_events,
                 visit_summary_rows=visit_summary_rows,
@@ -517,6 +562,65 @@ def build_app(db_path: Path) -> Flask:
     @app.get("/admin")
     def admin_index():
         return render_page(admin_mode=True)
+
+    @app.get("/admin/disagreements.csv")
+    def admin_disagreements_csv():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("disagreements"))
+        selected_source = normalize_space(request.args.get("disagreement_source", ""))
+        df = load_dataframe(db_path)
+        valid_sources = {
+            normalize_space(item.get("source"))
+            for item in build_source_disagreement_options(df)
+        }
+        if selected_source not in valid_sources:
+            selected_source = ""
+        rows = build_source_disagreement_rows(df, selected_source=selected_source, max_groups=5000)
+        output = io.StringIO()
+        fieldnames = [
+            "report_source",
+            "comparison_source",
+            "weekday",
+            "time",
+            "report_meeting",
+            "comparison_meeting",
+            "field",
+            "report_value",
+            "comparison_value",
+            "match_score",
+            "match_reasons",
+            "report_source_url",
+            "comparison_source_url",
+        ]
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in rows:
+            target = item.get("target", {})
+            comparison = item.get("comparison", {})
+            for diff in item.get("disagreements", []):
+                writer.writerow(
+                    {
+                        "report_source": target.get("source", ""),
+                        "comparison_source": comparison.get("source", ""),
+                        "weekday": target.get("weekday_is", ""),
+                        "time": target.get("time_display", ""),
+                        "report_meeting": target.get("meeting_name_display", ""),
+                        "comparison_meeting": comparison.get("meeting_name_display", ""),
+                        "field": diff.get("label", ""),
+                        "report_value": diff.get("target_value", ""),
+                        "comparison_value": diff.get("comparison_value", ""),
+                        "match_score": item.get("score", ""),
+                        "match_reasons": " | ".join(item.get("match_reasons", [])),
+                        "report_source_url": target.get("source_page_url", ""),
+                        "comparison_source_url": comparison.get("source_page_url", ""),
+                    }
+                )
+        filename_source = selected_source.replace(".", "-") if selected_source else "all"
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=source_disagreements_{filename_source}.csv"},
+        )
 
     @app.get("/csv")
     def csv_download():
@@ -626,10 +730,34 @@ def build_app(db_path: Path) -> Flask:
             return redirect(admin_redirect_target("locations"))
         canonical_location_text = request.form.get("canonical_location_text", "").strip()
         nickname = request.form.get("nickname", "").strip()
+        icon_emoji = request.form.get("icon_emoji", "").strip()
+        icon_bg_color = request.form.get("icon_bg_color", "").strip() if request.form.get("icon_has_bg") == "1" else ""
         redirect_query = request.form.get("redirect_query", "").strip()
         if canonical_location_text:
-            save_location_nickname(db_path, canonical_location_text, nickname)
+            save_location_nickname(db_path, canonical_location_text, nickname, icon_emoji, icon_bg_color)
         target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=locations")
+        return redirect(target)
+
+    @app.post("/duplicates/merge")
+    def duplicate_merge():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("duplicates"))
+        save_meeting_merge(
+            db_path,
+            canonical_source_uid=request.form.get("canonical_source_uid", ""),
+            duplicate_source_uid=request.form.get("duplicate_source_uid", ""),
+        )
+        redirect_query = request.form.get("redirect_query", "").strip()
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=duplicates")
+        return redirect(target)
+
+    @app.post("/duplicates/unmerge")
+    def duplicate_unmerge():
+        if not is_admin_authenticated():
+            return redirect(admin_redirect_target("duplicates"))
+        delete_meeting_merge(db_path, request.form.get("duplicate_source_uid", ""))
+        redirect_query = request.form.get("redirect_query", "").strip()
+        target = "/admin" + (f"?{redirect_query}" if redirect_query else "?admin_section=duplicates")
         return redirect(target)
 
     @app.post("/church/save")

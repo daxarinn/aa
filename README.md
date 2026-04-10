@@ -5,6 +5,15 @@ Fyrsta útgáfa af scraper fyrir:
 - `https://aa.is/aa-fundir/allir-fundir`
 - `https://www.fjarfundir.org/`
 
+Source-forgangur þegar sama fundi er lýst á fleiri en einum stað:
+
+1. `al-anon.is`
+2. `coda.is`
+3. `fjarfundir.org`
+4. `12sporahusid.is`
+5. `gula.is`
+6. `aa.is`
+
 Skrifar gögn í SQLite og býður upp á:
 
 - CSV útflutning

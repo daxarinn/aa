@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from .config import DEFAULT_CALENDAR_EVENT_DURATION, ICAL_BYDAY_BY_ORDER, SCHEMA_SQL, SIZE_BIN_VALUES, WEEKDAY_ORDER
+from .config import CHURCH_LOCATION_ICON_KEY, DEFAULT_CALENDAR_EVENT_DURATION, ICAL_BYDAY_BY_ORDER, SCHEMA_SQL, SIZE_BIN_VALUES, WEEKDAY_ORDER
 from .models import MeetingRecord
 from .parsing import (
     clean_html_lines,
@@ -31,7 +31,22 @@ def ensure_schema(db_path: Path) -> None:
     ensure_parent_dir(db_path)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+        existing_location_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(location_metadata)").fetchall()
+        }
+        if "icon_emoji" not in existing_location_columns:
+            conn.execute("ALTER TABLE location_metadata ADD COLUMN icon_emoji TEXT")
+        if "icon_bg_color" not in existing_location_columns:
+            conn.execute("ALTER TABLE location_metadata ADD COLUMN icon_bg_color TEXT")
         conn.commit()
+
+
+def _clean_placeholder_text(value: object) -> object:
+    text = normalize_space(value)
+    if text.casefold() in {"nan", "n/a", "none", "null", "nat"}:
+        return None
+    return value
 
 
 def write_snapshot(db_path: Path, records: list[MeetingRecord], scraped_at_utc: str) -> None:
@@ -133,6 +148,13 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                     me.updated_at_utc AS scraped_at_utc
                 FROM manual_events me
             ),
+            active_unified AS (
+                SELECT u.*
+                FROM unified u
+                LEFT JOIN meeting_merges mm
+                    ON mm.duplicate_source_uid = u.source_uid
+                WHERE mm.duplicate_source_uid IS NULL
+            ),
             size_reports AS (
                 SELECT
                     source_uid,
@@ -162,8 +184,22 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                 u.fellowship,
                 u.format,
                 u.location_text,
-                COALESCE(la.canonical_location_text, u.location_text) AS canonical_location_text,
+                COALESCE(la.canonical_location_text, NULLIF(TRIM(u.location_text), ''), NULLIF(TRIM(u.venue_text), '')) AS canonical_location_text,
                 lm.nickname AS location_nickname,
+                COALESCE(
+                    NULLIF(TRIM(lm.icon_emoji), ''),
+                    CASE
+                        WHEN LOWER(COALESCE(la.canonical_location_text, '') || ' ' || COALESCE(u.location_text, '') || ' ' || COALESCE(u.venue_text, '')) LIKE '%kirkj%'
+                        THEN NULLIF(TRIM(church_lm.icon_emoji), '')
+                    END
+                ) AS location_icon_emoji,
+                COALESCE(
+                    NULLIF(TRIM(lm.icon_bg_color), ''),
+                    CASE
+                        WHEN LOWER(COALESCE(la.canonical_location_text, '') || ' ' || COALESCE(u.location_text, '') || ' ' || COALESCE(u.venue_text, '')) LIKE '%kirkj%'
+                        THEN NULLIF(TRIM(church_lm.icon_bg_color), '')
+                    END
+                ) AS location_icon_bg_color,
                 CASE WHEN la.alias_location_text IS NULL THEN 0 ELSE 1 END AS has_location_mapping,
                 u.venue_text,
                 u.zoom_meeting_id,
@@ -179,18 +215,45 @@ def load_dataframe(db_path: Path) -> pd.DataFrame:
                 u.scraped_at_utc,
                 sr.size_report_count,
                 sr.avg_size_value
-            FROM unified u
+            FROM active_unified u
             LEFT JOIN location_aliases la
                 ON la.alias_location_text = u.location_text
             LEFT JOIN location_metadata lm
-                ON lm.canonical_location_text = COALESCE(la.canonical_location_text, u.location_text)
+                ON lm.canonical_location_text = COALESCE(la.canonical_location_text, NULLIF(TRIM(u.location_text), ''), NULLIF(TRIM(u.venue_text), ''))
+            LEFT JOIN location_metadata church_lm
+                ON church_lm.canonical_location_text = ?
             LEFT JOIN size_reports sr
                 ON sr.source_uid = u.source_uid
             ORDER BY weekday_order, start_time, time_display, source, meeting_name
             """,
             conn,
+            params=(CHURCH_LOCATION_ICON_KEY,),
         )
     if not df.empty:
+        text_columns = [
+            "meeting_name",
+            "subtitle",
+            "fellowship",
+            "format",
+            "location_text",
+            "canonical_location_text",
+            "location_nickname",
+            "location_icon_emoji",
+            "location_icon_bg_color",
+            "venue_text",
+            "zoom_meeting_id",
+            "zoom_passcode",
+            "zoom_url",
+            "gender_restriction",
+            "access_restriction",
+            "recurrence_hint",
+            "notes",
+            "source_record_id",
+            "source_page_url",
+        ]
+        for column in text_columns:
+            if column in df.columns:
+                df[column] = df[column].map(_clean_placeholder_text)
         locators: list[str] = []
         excerpts: list[str] = []
         for row in df.itertuples(index=False):
@@ -564,27 +627,159 @@ def save_location_mapping(db_path: Path, alias_location_text: str, canonical_loc
         conn.commit()
 
 
-def save_location_nickname(db_path: Path, canonical_location_text: str, nickname: str) -> None:
+def _clean_icon_bg_color(value: str) -> str:
+    color = normalize_space(value)
+    if not color:
+        return ""
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        return color
+    if re.fullmatch(r"#[0-9a-fA-F]{3}", color):
+        return color
+    return ""
+
+
+def save_location_nickname(
+    db_path: Path,
+    canonical_location_text: str,
+    nickname: str,
+    icon_emoji: str = "",
+    icon_bg_color: str = "",
+) -> None:
     ensure_schema(db_path)
     canonical = normalize_space(canonical_location_text)
     nickname_value = normalize_space(nickname)
+    icon_emoji_value = normalize_space(icon_emoji)[:8]
+    icon_bg_color_value = _clean_icon_bg_color(icon_bg_color)
     with sqlite3.connect(db_path) as conn:
         if not canonical:
             return
-        if not nickname_value:
+        if not nickname_value and not icon_emoji_value and not icon_bg_color_value:
             conn.execute("DELETE FROM location_metadata WHERE canonical_location_text = ?", (canonical,))
         else:
             conn.execute(
                 """
-                INSERT INTO location_metadata (canonical_location_text, nickname, updated_at_utc)
-                VALUES (?, ?, ?)
+                INSERT INTO location_metadata (canonical_location_text, nickname, icon_emoji, icon_bg_color, updated_at_utc)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(canonical_location_text) DO UPDATE SET
                     nickname = excluded.nickname,
+                    icon_emoji = excluded.icon_emoji,
+                    icon_bg_color = excluded.icon_bg_color,
                     updated_at_utc = excluded.updated_at_utc
                 """,
-                (canonical, nickname_value, datetime.now(timezone.utc).replace(microsecond=0).isoformat()),
+                (
+                    canonical,
+                    nickname_value,
+                    icon_emoji_value,
+                    icon_bg_color_value,
+                    datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                ),
             )
         conn.commit()
+
+
+def load_location_metadata(db_path: Path, canonical_location_text: str) -> dict[str, object]:
+    ensure_schema(db_path)
+    canonical = normalize_space(canonical_location_text)
+    if not canonical:
+        return {}
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT canonical_location_text, nickname, icon_emoji, icon_bg_color, updated_at_utc
+            FROM location_metadata
+            WHERE canonical_location_text = ?
+            """,
+            (canonical,),
+        ).fetchone()
+    if row is None:
+        return {
+            "canonical_location_text": canonical,
+            "nickname": "",
+            "icon_emoji": "",
+            "icon_bg_color": "",
+            "updated_at_utc": "",
+        }
+    result = dict(row)
+    for key in ["nickname", "icon_emoji", "icon_bg_color", "updated_at_utc"]:
+        result[key] = normalize_space(result.get(key))
+    return result
+
+
+def save_meeting_merge(db_path: Path, canonical_source_uid: str, duplicate_source_uid: str) -> None:
+    ensure_schema(db_path)
+    canonical_uid = normalize_space(canonical_source_uid)
+    duplicate_uid = normalize_space(duplicate_source_uid)
+    if not canonical_uid or not duplicate_uid or canonical_uid == duplicate_uid:
+        return
+    now_value = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            DELETE FROM meeting_merges
+            WHERE duplicate_source_uid = ?
+               OR (duplicate_source_uid = ? AND canonical_source_uid = ?)
+            """,
+            (canonical_uid, duplicate_uid, canonical_uid),
+        )
+        conn.execute(
+            """
+            INSERT INTO meeting_merges (duplicate_source_uid, canonical_source_uid, created_at_utc, updated_at_utc)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(duplicate_source_uid) DO UPDATE SET
+                canonical_source_uid = excluded.canonical_source_uid,
+                updated_at_utc = excluded.updated_at_utc
+            """,
+            (duplicate_uid, canonical_uid, now_value, now_value),
+        )
+        conn.commit()
+
+
+def delete_meeting_merge(db_path: Path, duplicate_source_uid: str) -> None:
+    ensure_schema(db_path)
+    duplicate_uid = normalize_space(duplicate_source_uid)
+    if not duplicate_uid:
+        return
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM meeting_merges WHERE duplicate_source_uid = ?", (duplicate_uid,))
+        conn.commit()
+
+
+def load_meeting_merges(db_path: Path) -> list[dict[str, object]]:
+    ensure_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                mm.duplicate_source_uid,
+                mm.canonical_source_uid,
+                mm.created_at_utc,
+                mm.updated_at_utc,
+                cm.source AS canonical_source,
+                cm.weekday_is AS canonical_weekday,
+                cm.time_display AS canonical_time,
+                cm.meeting_name AS canonical_name,
+                cm.location_text AS canonical_location,
+                cm.venue_text AS canonical_venue,
+                dm.source AS duplicate_source,
+                dm.weekday_is AS duplicate_weekday,
+                dm.time_display AS duplicate_time,
+                dm.meeting_name AS duplicate_name,
+                dm.location_text AS duplicate_location,
+                dm.venue_text AS duplicate_venue
+            FROM meeting_merges mm
+            LEFT JOIN meetings cm
+                ON cm.source_uid = mm.canonical_source_uid
+            LEFT JOIN meetings dm
+                ON dm.source_uid = mm.duplicate_source_uid
+            ORDER BY COALESCE(cm.weekday_order, dm.weekday_order, 99),
+                     COALESCE(cm.start_time, dm.start_time, ''),
+                     COALESCE(cm.time_display, dm.time_display, ''),
+                     mm.updated_at_utc DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def save_manual_event(
@@ -808,7 +1003,14 @@ def build_location_review_rows(df: pd.DataFrame, query: str) -> list[dict[str, o
     rows: list[dict[str, object]] = []
     grouped = (
         working.groupby(
-            ["location_text", "canonical_location_text", "location_nickname", "has_location_mapping"],
+            [
+                "location_text",
+                "canonical_location_text",
+                "location_nickname",
+                "location_icon_emoji",
+                "location_icon_bg_color",
+                "has_location_mapping",
+            ],
             dropna=False,
         )
         .agg(
@@ -824,6 +1026,8 @@ def build_location_review_rows(df: pd.DataFrame, query: str) -> list[dict[str, o
         item["normalized_key"] = normalized_location_key(str(item["location_text"]))
         item["suggested_canonical"] = str(item["canonical_location_text"] or item["location_text"])
         item["location_nickname"] = "" if pd.isna(item["location_nickname"]) else str(item["location_nickname"])
+        item["location_icon_emoji"] = "" if pd.isna(item["location_icon_emoji"]) else str(item["location_icon_emoji"])
+        item["location_icon_bg_color"] = "" if pd.isna(item["location_icon_bg_color"]) else str(item["location_icon_bg_color"])
         rows.append(item)
 
     rows.sort(key=lambda item: (-int(item["meeting_count"]), str(item["location_text"])))
