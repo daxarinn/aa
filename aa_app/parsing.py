@@ -120,6 +120,7 @@ def sanitize_rows_for_render(rows: list[dict[str, object]]) -> list[dict[str, ob
         for key, value in row.items():
             clean_row[key] = clean_display_value(value)
         clean_row["meeting_name_display"] = build_meeting_name_display(clean_row)
+        clean_row["meeting_prefix_emoji"] = build_meeting_prefix_emoji(clean_row)
         zoom_url = normalize_space(clean_row.get("zoom_url"))
         if zoom_url and not re.match(r"^https?://", zoom_url, re.I):
             clean_row["zoom_url"] = None
@@ -170,21 +171,53 @@ def extract_place_name(value: object | None) -> str | None:
 
 def build_meeting_name_display(row: dict[str, object]) -> str:
     meeting_name = normalize_space(row.get("meeting_name"))
-    if meeting_name:
+    generic_meeting_name = is_generic_meeting_name(row)
+    if meeting_name and not generic_meeting_name:
         return meeting_name
+    unnamed_church_title = build_unnamed_church_title(row)
+    if unnamed_church_title:
+        return unnamed_church_title
     location_nickname = normalize_space(row.get("location_nickname"))
     if location_nickname:
         return location_nickname
+    if generic_meeting_name:
+        for candidate in [
+            row.get("canonical_location_text"),
+            row.get("location_text"),
+            row.get("venue_text"),
+        ]:
+            place_name = extract_place_name(candidate)
+            if place_name:
+                return place_name
     fallback_title = build_unnamed_meeting_fallback(row)
     if fallback_title:
         return fallback_title
+    if meeting_name:
+        return meeting_name
     return "Ónefndur fundur"
 
 
+def build_meeting_prefix_emoji(row: dict[str, object]) -> str | None:
+    parts: list[str] = []
+    gender = normalize_space(row.get("gender_restriction"))
+    meeting_format = normalize_space(row.get("format"))
+    fellowship = normalize_space(row.get("fellowship_display") or row.get("fellowship"))
+
+    if fellowship == "Al-Anon":
+        parts.append("🫂")
+
+    if gender == "Karlar":
+        parts.append("♂️")
+    elif gender == "Konur":
+        parts.append("♀️")
+
+    if meeting_format == "Fjarfundur":
+        parts.append("🌐")
+
+    return " ".join(parts) or None
+
+
 def build_unnamed_meeting_fallback(row: dict[str, object]) -> str | None:
-    fellowship_name = normalize_space(row.get("fellowship_display"))
-    if fellowship_name and fellowship_name != "Óskráð félag":
-        return f"{fellowship_name} fundur"
     for candidate in [
         row.get("canonical_location_text"),
         row.get("location_text"),
@@ -193,7 +226,101 @@ def build_unnamed_meeting_fallback(row: dict[str, object]) -> str | None:
         place_name = extract_place_name(candidate)
         if place_name:
             return place_name
+    fellowship_name = normalize_space(row.get("fellowship_display"))
+    if fellowship_name and fellowship_name != "Óskráð félag":
+        return f"{fellowship_name} fundur"
     return None
+
+
+def extract_church_name(value: object | None) -> str | None:
+    text = normalize_space(value)
+    if not text or "kirkj" not in text.casefold():
+        return None
+    parts = [normalize_space(part) for part in re.split(r"[,;]", text) if normalize_space(part)]
+    for candidate in parts or [text]:
+        if "kirkj" not in candidate.casefold():
+            continue
+        tokens = candidate.split()
+        for token in tokens:
+            cleaned = token.strip("()[]{}")
+            lowered = cleaned.casefold()
+            if "kirkj" not in lowered:
+                continue
+            if lowered not in {"kirkja", "kirkjan"}:
+                return cleaned
+            return candidate
+    return text
+
+
+def build_unnamed_church_title(row: dict[str, object]) -> str | None:
+    if normalize_space(row.get("meeting_name")):
+        return None
+    for candidate in [
+        row.get("venue_text"),
+        row.get("location_nickname"),
+        row.get("location_text"),
+        row.get("canonical_location_text"),
+    ]:
+        church_name = extract_church_name(candidate)
+        if church_name:
+            return church_name
+    return None
+
+
+def build_unnamed_church_summary(row: dict[str, object], church_title: str | None) -> str | None:
+    if not church_title:
+        return None
+    for candidate in [
+        row.get("canonical_location_text"),
+        row.get("location_text"),
+        row.get("location_nickname"),
+        row.get("venue_text"),
+    ]:
+        text = normalize_space(candidate)
+        if not text:
+            continue
+        stripped = re.sub(re.escape(church_title), " ", text, flags=re.I)
+        stripped = re.sub(r"[\s,;/()]+", " ", stripped).strip()
+        if stripped and "kirkj" not in stripped.casefold():
+            place_name = extract_place_name(stripped) or stripped
+            if place_name and place_name.casefold() != church_title.casefold():
+                return place_name
+    for candidate in [
+        row.get("canonical_location_text"),
+        row.get("location_text"),
+    ]:
+        place_name = extract_place_name(candidate)
+        if place_name and "kirkj" not in place_name.casefold() and place_name.casefold() != church_title.casefold():
+            return place_name
+    return None
+
+
+def build_generic_summary_label(row: dict[str, object]) -> str | None:
+    meeting_name = normalize_space(row.get("meeting_name"))
+    if meeting_name:
+        return meeting_name
+    fellowship_name = normalize_space(row.get("fellowship_display") or row.get("fellowship"))
+    if fellowship_name and fellowship_name != "Óskráð félag":
+        return f"{fellowship_name} fundur"
+    return None
+
+
+def is_generic_meeting_name(row: dict[str, object]) -> bool:
+    meeting_name = normalize_space(row.get("meeting_name"))
+    if not meeting_name:
+        return False
+
+    folded_name = re.sub(r"\s+", " ", meeting_name.casefold().replace("-", " ")).strip()
+    fellowship_name = normalize_space(row.get("fellowship_display") or row.get("fellowship")).casefold()
+    generic_names = {
+        "aa fundur",
+        "aa meeting",
+        "fundur",
+    }
+    if fellowship_name:
+        generic_names.add(fellowship_name)
+        generic_names.add(f"{fellowship_name} fundur")
+    return folded_name in generic_names
 
 
 def build_venue_summary(value: object | None) -> str | None:
@@ -228,10 +355,16 @@ def build_venue_summary(value: object | None) -> str | None:
 
 
 def build_summary_display(row: dict[str, object]) -> str:
+    generic_meeting_name = is_generic_meeting_name(row)
     title_fallback = None
-    if not normalize_space(row.get("meeting_name")) and normalize_space(row.get("location_nickname")):
+    unnamed_meeting = not normalize_space(row.get("meeting_name"))
+    unnamed_church_title = build_unnamed_church_title(row) if unnamed_meeting else None
+    if unnamed_meeting and normalize_space(row.get("location_nickname")):
         title_fallback = build_unnamed_meeting_fallback(row)
     candidates = [
+        build_unnamed_church_summary(row, unnamed_church_title) if unnamed_church_title else None,
+        build_generic_summary_label(row) if unnamed_meeting and not unnamed_church_title else None,
+        clean_display_value(row.get("meeting_name")) if generic_meeting_name else None,
         title_fallback,
         clean_display_value(row.get("location_nickname")),
         extract_place_name(row.get("canonical_location_text")),

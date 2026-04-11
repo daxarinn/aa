@@ -387,6 +387,24 @@ def build_app(db_path: Path) -> Flask:
 
         return df
 
+    def attach_details_urls(rows: list[dict[str, object]], filters: dict[str, str]) -> list[dict[str, object]]:
+        for row in rows:
+            source_uid = normalize_space(row.get("source_uid"))
+            weekday_value = normalize_space(row.get("weekday_is"))
+            row["details_url"] = (
+                "/" + "?" + build_query_string(
+                    filters,
+                    overrides={
+                        "view": "list",
+                        "focus_meeting": source_uid,
+                        "weekday": weekday_value or normalize_space(filters.get("weekday")),
+                    },
+                )
+                if source_uid
+                else ""
+            )
+        return rows
+
     def build_single_day_week_views(source_df: pd.DataFrame, filters: dict[str, str]) -> list[dict[str, object]]:
         week_days = [day for day, _ in AA_DAY_PAGES]
         current_weekday = normalize_space(filters.get("weekday"))
@@ -396,7 +414,7 @@ def build_app(db_path: Path) -> Flask:
         all_days_filters = dict(filters)
         all_days_filters["weekday"] = ""
         filtered = filter_df(source_df, all_days_filters)
-        row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
+        row_dicts = attach_details_urls(sanitize_rows_for_render(filtered.to_dict(orient="records")), filters)
         views: list[dict[str, object]] = []
         for index, day in enumerate(week_days):
             previous_day = week_days[(index - 1) % len(week_days)]
@@ -438,7 +456,7 @@ def build_app(db_path: Path) -> Flask:
         if not admin_mode:
             log_client_visit(db_path, effective_client_id, request.path, request.query_string.decode("utf-8", errors="ignore"))
         filtered = filter_df(df, filters)
-        row_dicts = sanitize_rows_for_render(filtered.to_dict(orient="records"))
+        row_dicts = attach_details_urls(sanitize_rows_for_render(filtered.to_dict(orient="records")), filters)
         displayed_week_days = [filters["weekday"]] if filters["weekday"] in [day for day, _ in AA_DAY_PAGES] else [day for day, _ in AA_DAY_PAGES]
         displayed_week_day_orders = [WEEKDAY_ORDER[day] for day in displayed_week_days]
         single_day_week_views = build_single_day_week_views(df, filters) if filters["view"] == "week" and len(displayed_week_days) == 1 else []

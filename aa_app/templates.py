@@ -3,7 +3,7 @@ from __future__ import annotations
 CARD_TEMPLATE = """
 {% macro render_single_day_board(day, weekday_order, slots) -%}
 <div class="now-line-status" id="nowLineStatus">
-  <span class="now-line-label" id="nowLineLabel">Núna</span>
+  <button class="now-line-label" id="nowLineLabel" type="button">Núna</button>
 </div>
 <div class="now-line" id="nowLine"></div>
 <div class="week-head" aria-hidden="true"></div>
@@ -14,16 +14,17 @@ CARD_TEMPLATE = """
 {% for cell in slot["cells"] %}
 <div class="week-cell{% if slot["is_compact"] %} is-compact{% endif %}">
   {% for row in cell %}
-  <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
+  <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}{% if row["is_live_now"] %} is-live-now-card{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}" data-weekday-order="{{ row["weekday_order"] or "" }}" data-start-time="{{ row["start_time"] or "" }}" data-is-live-now="{% if row["is_live_now"] %}1{% else %}0{% endif %}">
     <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
     <div class="slot-title-row">
       {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
+      {% if row["meeting_prefix_emoji"] %}<span class="meeting-prefix-emoji" aria-hidden="true">{{ row["meeting_prefix_emoji"] }}</span>{% endif %}
       <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
       {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
     </div>
     <p class="slot-summary">{{ row["summary_display"] }}</p>
     <div class="slot-tooltip">
-      <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
+      <p class="slot-tooltip-title">{% if row["meeting_prefix_emoji"] %}<span class="meeting-prefix-emoji" aria-hidden="true">{{ row["meeting_prefix_emoji"] }}</span>{% endif %}{{ row["meeting_name_display"] }}</p>
       {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
       {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
       {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
@@ -37,6 +38,7 @@ CARD_TEMPLATE = """
         {% if row["access_restriction"] %}<span>{{ row["access_restriction"] }}</span>{% endif %}
       </div>
       {% if row["zoom_url"] %}<a class="slot-link" href="{{ row["zoom_url"] }}" target="_blank" rel="noreferrer">Opna fund</a>{% endif %}
+      {% if row["details_url"] %}<a class="slot-link" href="{{ row["details_url"] }}">Sjá nánar</a>{% endif %}
       <div class="slot-provenance">
         <a href="{{ row["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
         {% if row["source_locator"] %}<span> · {{ row["source_locator"] }}</span>{% endif %}
@@ -229,6 +231,10 @@ CARD_TEMPLATE = """
       padding: 11px;
       box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
       position: relative;
+      scroll-margin-top: 86px;
+    }
+    .card.is-scroll-target {
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.22), 0 14px 30px rgba(15, 23, 42, 0.08);
     }
     .card.is-favorite,
     .slot-card.is-favorite {
@@ -446,6 +452,16 @@ CARD_TEMPLATE = """
       overflow: visible;
       cursor: pointer;
       outline: none;
+      z-index: 2;
+    }
+    .slot-card.is-open,
+    .slot-card:focus-within {
+      z-index: 25;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .slot-card:hover {
+        z-index: 25;
+      }
     }
     .favorite-toggle {
       position: absolute;
@@ -506,6 +522,13 @@ CARD_TEMPLATE = """
       min-width: 0;
       flex: 1 1 auto;
     }
+    .meeting-prefix-emoji {
+      flex: 0 0 auto;
+      font-size: 1rem;
+      line-height: 1;
+      margin-right: 0.2rem;
+      white-space: nowrap;
+    }
     .card-title-row {
       display: flex;
       align-items: center;
@@ -518,6 +541,7 @@ CARD_TEMPLATE = """
     }
     .live-dot {
       position: relative;
+      top: -3px;
       width: 8px;
       height: 8px;
       border-radius: 999px;
@@ -659,20 +683,40 @@ CARD_TEMPLATE = """
     .slot-tooltip::before {
       content: "";
       position: absolute;
-      top: -8px;
       left: 18px;
       border-left: 8px solid transparent;
       border-right: 8px solid transparent;
+    }
+    .slot-tooltip.is-below::before {
+      top: -8px;
       border-bottom: 8px solid rgba(255,255,255,0.98);
+    }
+    .slot-tooltip.is-above::before {
+      bottom: -8px;
+      border-top: 8px solid rgba(255,255,255,0.98);
+    }
+    .slot-tooltip::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 14px;
+      background: transparent;
+    }
+    .slot-tooltip.is-below::after {
+      top: -14px;
+    }
+    .slot-tooltip.is-above::after {
+      bottom: -14px;
     }
     .now-line {
       position: absolute;
       left: calc(var(--week-time-column-width) + 1px);
       right: 0;
-      height: 2px;
-      background: #d62828;
+      height: 1px;
+      background: rgba(214, 40, 40, 0.7);
       box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
-      z-index: 12;
+      z-index: 1;
       pointer-events: none;
       display: none;
     }
@@ -683,7 +727,7 @@ CARD_TEMPLATE = """
       position: absolute;
       top: 8px;
       right: 8px;
-      z-index: 13;
+      z-index: 16;
       pointer-events: none;
       display: none;
     }
@@ -692,7 +736,9 @@ CARD_TEMPLATE = """
     }
     .now-line-label {
       position: static;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: #d62828;
       color: white;
       font-size: 0.72rem;
@@ -701,6 +747,10 @@ CARD_TEMPLATE = """
       border-radius: 999px;
       box-shadow: 0 6px 14px rgba(214, 40, 40, 0.22);
       white-space: nowrap;
+      border: 0;
+      cursor: pointer;
+      pointer-events: auto;
+      font: inherit;
     }
     .mapping-section {
       margin-top: 16px;
@@ -1588,7 +1638,7 @@ CARD_TEMPLATE = """
       <div class="week-scroll" data-scroll-restore="week-shell">
       <div class="week-board" data-week-days="{{ week_days|join('|') }}" data-all-week-days="{{ options["weekday_is"]|join('|') }}" data-weekday-orders="{{ week_day_orders|join('|') }}">
         <div class="now-line-status" id="nowLineStatus">
-          <span class="now-line-label" id="nowLineLabel">Núna</span>
+          <button class="now-line-label" id="nowLineLabel" type="button">Núna</button>
         </div>
         <div class="now-line" id="nowLine">
         </div>
@@ -1601,16 +1651,17 @@ CARD_TEMPLATE = """
         {% for cell in slot["cells"] %}
         <div class="week-cell{% if slot["is_compact"] %} is-compact{% endif %}">
           {% for row in cell %}
-          <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}">
+          <article class="slot-card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}{% if row["is_live_now"] %} is-live-now-card{% endif %}" tabindex="0" data-meeting-id="{{ row["source_uid"] }}" data-weekday-order="{{ row["weekday_order"] or "" }}" data-start-time="{{ row["start_time"] or "" }}" data-is-live-now="{% if row["is_live_now"] %}1{% else %}0{% endif %}">
             <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
             <div class="slot-title-row">
               {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
+              {% if row["meeting_prefix_emoji"] %}<span class="meeting-prefix-emoji" aria-hidden="true">{{ row["meeting_prefix_emoji"] }}</span>{% endif %}
               <h3 class="slot-title">{{ row["meeting_name_display"] }}</h3>
               {% if row["is_live_now"] %}<span class="live-dot is-blinking" title="Í gangi núna" aria-hidden="true"></span>{% endif %}
             </div>
             <p class="slot-summary">{{ row["summary_display"] }}</p>
             <div class="slot-tooltip">
-              <p class="slot-tooltip-title">{{ row["meeting_name_display"] }}</p>
+              <p class="slot-tooltip-title">{% if row["meeting_prefix_emoji"] %}<span class="meeting-prefix-emoji" aria-hidden="true">{{ row["meeting_prefix_emoji"] }}</span>{% endif %}{{ row["meeting_name_display"] }}</p>
               {% if row["subtitle"] %}<p class="slot-meta">{{ row["subtitle"] }}</p>{% endif %}
               {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
               {% if row["location_nickname"] %}<p class="slot-meta"><strong>{{ row["location_nickname"] }}</strong></p>{% endif %}
@@ -1624,6 +1675,7 @@ CARD_TEMPLATE = """
                 {% if row["access_restriction"] %}<span>{{ row["access_restriction"] }}</span>{% endif %}
               </div>
               {% if row["zoom_url"] %}<a class="slot-link" href="{{ row["zoom_url"] }}" target="_blank" rel="noreferrer">Opna fund</a>{% endif %}
+              {% if row["details_url"] %}<a class="slot-link" href="{{ row["details_url"] }}">Sjá nánar</a>{% endif %}
               <div class="slot-provenance">
                 <a href="{{ row["source_page_url"] }}" target="_blank" rel="noreferrer">Upprunasíða</a>
                 {% if row["source_locator"] %}<span> · {{ row["source_locator"] }}</span>{% endif %}
@@ -1642,7 +1694,7 @@ CARD_TEMPLATE = """
     {% else %}
     <section class="grid">
       {% for row in rows %}
-      <article class="card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" data-meeting-id="{{ row["source_uid"] }}">
+      <article class="card{% if row["fellowship_display"] == "Al-Anon" %} is-alanon{% endif %}{% if row["format"] == "Fjarfundur" %} is-remote{% endif %}{% if row["gender_restriction"] == "Konur" %} is-women{% elif row["gender_restriction"] == "Karlar" %} is-men{% endif %}{% if row["is_favorite"] %} is-favorite{% endif %}" data-meeting-id="{{ row["source_uid"] }}" tabindex="-1">
         <button class="favorite-toggle{% if row["is_favorite"] %} is-active{% endif %}" type="button" data-meeting-id="{{ row["source_uid"] }}" aria-label="Setja fund í uppáhald">★</button>
         <div class="topline">
           <span class="time">{{ row["weekday_is"] }} {{ row["time_display"] }}</span>
@@ -1655,6 +1707,7 @@ CARD_TEMPLATE = """
         </div>
         <div class="card-title-row">
           {% if row["location_icon_emoji"] %}<span class="location-icon" {% if row["location_icon_bg_color"] %}style="background: {{ row["location_icon_bg_color"] }}; border-color: {{ row["location_icon_bg_color"] }};"{% endif %}>{{ row["location_icon_emoji"] }}</span>{% endif %}
+          {% if row["meeting_prefix_emoji"] %}<span class="meeting-prefix-emoji" aria-hidden="true">{{ row["meeting_prefix_emoji"] }}</span>{% endif %}
           <h2>{{ row["meeting_name_display"] }}</h2>
         </div>
         {% if row["size_display"] %}<p class="size-note">{{ row["size_display"] }}</p>{% endif %}
@@ -2077,11 +2130,13 @@ CARD_TEMPLATE = """
     const tooltip = card.querySelector('.slot-tooltip');
     if (!tooltip) return;
 
+    tooltip.classList.remove('is-above', 'is-below');
     tooltip.style.left = '10px';
     tooltip.style.right = 'auto';
     tooltip.style.top = 'calc(100% + 8px)';
     tooltip.style.bottom = 'auto';
     tooltip.style.transform = 'translateX(0)';
+    tooltip.classList.add('is-below');
 
     const viewportPadding = 10;
     const boundaryRect = weekContainer ? weekContainer.getBoundingClientRect() : {
@@ -2105,6 +2160,8 @@ CARD_TEMPLATE = """
     if (rect.bottom > boundaryRect.bottom - viewportPadding && cardRect.top - rect.height - 8 >= boundaryRect.top + viewportPadding) {
       tooltip.style.top = 'auto';
       tooltip.style.bottom = 'calc(100% + 8px)';
+      tooltip.classList.remove('is-below');
+      tooltip.classList.add('is-above');
     }
   };
 
@@ -2239,6 +2296,8 @@ CARD_TEMPLATE = """
     timeZone: 'Atlantic/Reykjavik'
   });
   const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
   const visibleDayOrders = () => {
     const board = getBoard();
     if (!board) return [];
@@ -2246,6 +2305,18 @@ CARD_TEMPLATE = """
       .split('|')
       .map((item) => Number(item.trim()))
       .filter((value) => !Number.isNaN(value));
+  };
+
+  const getNowParts = () => {
+    const parts = formatter.formatToParts(new Date());
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+    return {
+      hour,
+      minute,
+      nowMinutes: (hour * 60) + minute,
+      weekdayOrder: weekdayMap[weekdayFormatter.format(new Date())] || 0,
+    };
   };
 
   const getNowLineElements = () => {
@@ -2256,6 +2327,77 @@ CARD_TEMPLATE = """
       status: board?.querySelector('#nowLineStatus') || null,
       label: board?.querySelector('#nowLineLabel') || null,
     };
+  };
+
+  const getTimeCells = (board) => Array.from(board.querySelectorAll('.time-cell'))
+    .map((cell) => ({
+      minutes: parseMinutes(cell.dataset.timeLabel || cell.textContent),
+      top: cell.offsetTop,
+      height: cell.offsetHeight
+    }))
+    .filter((item) => item.minutes !== null)
+    .sort((a, b) => a.minutes - b.minutes);
+
+  const getVisibleMeetings = (board, weekdayOrder) => Array.from(board.querySelectorAll('.slot-card[data-start-time]'))
+    .map((card) => {
+      const cardWeekdayOrder = Number(card.dataset.weekdayOrder || '0');
+      const startMinutes = parseMinutes(card.dataset.startTime || '');
+      if (!cardWeekdayOrder || cardWeekdayOrder !== weekdayOrder || startMinutes === null) {
+        return null;
+      }
+      return {
+        card,
+        startMinutes,
+        endMinutes: startMinutes + 60,
+        top: card.offsetTop,
+        height: card.offsetHeight,
+        bottom: card.offsetTop + card.offsetHeight,
+      };
+    })
+    .filter((item) => item !== null)
+    .sort((a, b) => a.startMinutes - b.startMinutes || a.top - b.top);
+
+  const computeTimeCellTop = (timeCells, nowMinutes) => {
+    if (!timeCells.length) return null;
+    if (nowMinutes <= timeCells[0].minutes) {
+      return timeCells[0].top;
+    }
+    for (let index = 0; index < timeCells.length; index += 1) {
+      const current = timeCells[index];
+      const next = timeCells[index + 1];
+      if (!next) {
+        return current.top + current.height;
+      }
+      if (nowMinutes >= current.minutes && nowMinutes < next.minutes) {
+        const ratio = (nowMinutes - current.minutes) / (next.minutes - current.minutes);
+        return current.top + ((next.top - current.top) * ratio);
+      }
+    }
+    return timeCells[0].top;
+  };
+
+  const computeMeetingAnchoredTop = ({ meetings, nowMinutes, fallbackTop }) => {
+    if (!meetings.length) return fallbackTop;
+
+    const anchorMeeting = meetings.find((meeting) => meeting.endMinutes > nowMinutes) || null;
+    if (!anchorMeeting) {
+      return null;
+    }
+
+    return Math.max(anchorMeeting.top - 6, 0);
+  };
+
+  const scrollToNowLine = (behavior = 'smooth') => {
+    const { line } = getNowLineElements();
+    if (!line || !line.classList.contains('visible')) {
+      return false;
+    }
+    const lineRect = line.getBoundingClientRect();
+    const absoluteTop = window.scrollY + lineRect.top;
+    const viewportOffset = Math.max(72, Math.round(window.innerHeight * 0.18));
+    const targetTop = Math.max(0, absoluteTop - viewportOffset);
+    window.scrollTo({ top: targetTop, behavior });
+    return true;
   };
 
   const attemptInitialAutoScroll = () => {
@@ -2270,28 +2412,20 @@ CARD_TEMPLATE = """
       return;
     }
 
-    const currentWeekdayOrder = weekdayMap[weekdayFormatter.format(new Date())] || 0;
+    const { weekdayOrder } = getNowParts();
     const currentVisibleDayOrders = visibleDayOrders();
-    if (currentVisibleDayOrders.length !== 1 || currentVisibleDayOrders[0] !== currentWeekdayOrder) {
+    if (currentVisibleDayOrders.length !== 1 || currentVisibleDayOrders[0] !== weekdayOrder) {
       return;
     }
 
-    const lineRect = line.getBoundingClientRect();
-    const absoluteTop = window.scrollY + lineRect.top;
-    const viewportOffset = Math.max(72, Math.round(window.innerHeight * 0.18));
-    const targetTop = Math.max(0, absoluteTop - viewportOffset);
-    initialAutoScrollDone = true;
-    window.scrollTo(0, targetTop);
+    initialAutoScrollDone = scrollToNowLine('auto');
   };
 
   function updateNowLine() {
     const { board, line, status, label } = getNowLineElements();
     if (!board || !line || !status || !label) return;
-    const parts = formatter.formatToParts(new Date());
-    const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
-    const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
-    const weekdayOrder = weekdayMap[weekdayFormatter.format(new Date())] || 0;
-    const nowMinutes = (hour * 60) + minute;
+
+    const { hour, minute, nowMinutes, weekdayOrder } = getNowParts();
     const currentVisibleDayOrders = visibleDayOrders();
 
     if (currentVisibleDayOrders.length === 1 && currentVisibleDayOrders[0] !== weekdayOrder) {
@@ -2300,40 +2434,27 @@ CARD_TEMPLATE = """
       return;
     }
 
-    const timeCells = Array.from(board.querySelectorAll('.time-cell'))
-      .map((cell) => ({
-        minutes: parseMinutes(cell.dataset.timeLabel || cell.textContent),
-        top: cell.offsetTop,
-        height: cell.offsetHeight
-      }))
-      .filter((item) => item.minutes !== null)
-      .sort((a, b) => a.minutes - b.minutes);
-
-    if (!timeCells.length) {
+    const meetings = getVisibleMeetings(board, weekdayOrder);
+    if (!meetings.length) {
       line.classList.remove('visible');
       status.classList.remove('visible');
       return;
     }
 
-    let top = timeCells[0].top;
-    if (nowMinutes <= timeCells[0].minutes) {
-      top = timeCells[0].top;
-    } else {
-      for (let index = 0; index < timeCells.length; index += 1) {
-        const current = timeCells[index];
-        const next = timeCells[index + 1];
-        if (!next) {
-          top = current.top + current.height;
-          break;
-        }
-        if (nowMinutes >= current.minutes && nowMinutes < next.minutes) {
-          const ratio = (nowMinutes - current.minutes) / (next.minutes - current.minutes);
-          top = current.top + ((next.top - current.top) * ratio);
-          break;
-        }
-      }
+    const timeCells = getTimeCells(board);
+    const fallbackTop = computeTimeCellTop(timeCells, nowMinutes);
+    const rawTop = computeMeetingAnchoredTop({
+      meetings,
+      nowMinutes,
+      fallbackTop: fallbackTop ?? meetings[0].top,
+    });
+    if (rawTop === null) {
+      line.classList.remove('visible');
+      status.classList.remove('visible');
+      return;
     }
-
+    const maxTop = Math.max(board.scrollHeight - 8, 0);
+    const top = clamp(rawTop, 0, maxTop);
     line.style.top = `${top}px`;
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
@@ -2341,6 +2462,13 @@ CARD_TEMPLATE = """
 
     attemptInitialAutoScroll();
   }
+
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.now-line-label');
+    if (!trigger) return;
+    event.preventDefault();
+    scrollToNowLine('smooth');
+  });
 
   window.__aaUpdateNowLine = updateNowLine;
   updateNowLine();
@@ -2419,6 +2547,23 @@ CARD_TEMPLATE = """
     swiper.update();
     window.__aaUpdateNowLine?.();
   });
+})();
+
+(function() {
+  const focusMeeting = new URLSearchParams(window.location.search).get('focus_meeting');
+  if (!focusMeeting) return;
+
+  const target = Array.from(document.querySelectorAll('.grid .card[data-meeting-id]'))
+    .find((card) => (card.dataset.meetingId || '').trim() === focusMeeting.trim());
+  if (!target) return;
+
+  const revealTarget = () => {
+    target.classList.add('is-scroll-target');
+    target.scrollIntoView({ block: 'start', behavior: 'auto' });
+    target.focus({ preventScroll: true });
+  };
+
+  requestAnimationFrame(() => requestAnimationFrame(revealTarget));
 })();
 </script>
 </html>
