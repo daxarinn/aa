@@ -74,13 +74,13 @@ TIMER_TEMPLATE = """
       max-width: 540px;
       margin: 0 auto;
       padding:
-        max(14px, env(safe-area-inset-top))
-        14px
-        max(16px, env(safe-area-inset-bottom))
-        14px;
+        max(10px, env(safe-area-inset-top))
+        12px
+        max(12px, env(safe-area-inset-bottom))
+        12px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
     }
     .topbar {
       display: flex;
@@ -112,7 +112,7 @@ TIMER_TEMPLATE = """
       border-radius: 28px;
       background: linear-gradient(180deg, rgba(18, 22, 26, 0.98), rgba(10, 13, 16, 0.98));
       box-shadow: var(--shadow);
-      padding: 18px;
+      padding: 14px;
     }
     .label {
       margin: 0;
@@ -122,11 +122,11 @@ TIMER_TEMPLATE = """
       letter-spacing: 0.16em;
     }
     .title-row {
-      margin-top: 8px;
+      margin-top: 6px;
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
     }
     .title-row h1 {
       margin: 0;
@@ -139,36 +139,20 @@ TIMER_TEMPLATE = """
       font-size: 0.95rem;
       white-space: nowrap;
     }
-    .countdown {
-      margin: 16px 0 6px;
-      font-size: clamp(4.8rem, 24vw, 8rem);
-      line-height: 0.9;
-      letter-spacing: -0.08em;
-      color: var(--text-mid);
-      font-variant-numeric: tabular-nums;
-      text-align: center;
-    }
-    body[data-phase="final"] .countdown {
-      color: var(--text-strong);
-    }
-    body[data-phase="expired"] .countdown {
-      color: var(--text-hot);
-      animation: expired-text 0.95s linear infinite;
-    }
     .status {
       min-height: 1.3em;
       text-align: center;
       color: var(--text-soft);
-      font-size: 1rem;
+      font-size: 0.95rem;
     }
     body[data-phase="final"] .status,
     body[data-phase="expired"] .status {
       color: var(--text-strong);
     }
     .bar-wrap {
-      margin-top: 18px;
-      height: min(25vh, 150px);
-      min-height: 86px;
+      margin-top: 12px;
+      height: min(21vh, 124px);
+      min-height: 78px;
       border-radius: 24px;
       border: 1px solid var(--line);
       background: linear-gradient(180deg, #090d10 0%, var(--bar-track) 100%);
@@ -207,33 +191,70 @@ TIMER_TEMPLATE = """
       position: absolute;
       inset: 0;
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: center;
-      color: rgba(255, 255, 255, 0.12);
-      font-size: clamp(1rem, 4.5vw, 1.2rem);
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
+      align-items: center;
+      gap: 6px;
       pointer-events: none;
     }
-    body[data-phase="warning"] .bar-overlay {
+    .bar-time {
+      color: #7c8791;
+      font-size: clamp(4rem, 21vw, 6.5rem);
+      line-height: 0.86;
+      letter-spacing: -0.08em;
+      font-variant-numeric: tabular-nums;
+      position: relative;
+      z-index: 1;
+    }
+    .bar-label {
+      color: rgba(255, 255, 255, 0.14);
+      font-size: clamp(0.9rem, 4vw, 1.1rem);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      position: relative;
+      z-index: 2;
+    }
+    body[data-phase="warning"] .bar-label {
       color: rgba(255, 176, 74, 0.42);
     }
-    body[data-phase="final"] .bar-overlay,
-    body[data-phase="expired"] .bar-overlay {
+    body[data-phase="final"] .bar-time {
+      color: var(--text-strong);
+    }
+    body[data-phase="expired"] .bar-time {
+      color: var(--text-hot);
+      animation: expired-text 0.45s steps(2, end) infinite;
+      opacity: 0.62;
+    }
+    body[data-phase="final"] .bar-label,
+    body[data-phase="expired"] .bar-label {
       color: rgba(255, 93, 93, 0.82);
     }
+    body[data-phase="expired"] .bar-label {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: clamp(2.8rem, 14vw, 4.9rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      text-transform: none;
+      line-height: 0.9;
+      color: rgba(255, 93, 93, 0.94);
+      text-shadow: 0 0 18px rgba(255, 93, 93, 0.18);
+      white-space: nowrap;
+    }
     .meta {
-      margin-top: 10px;
+      margin-top: 8px;
       display: flex;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
       color: var(--text-soft);
-      font-size: 0.9rem;
+      font-size: 0.82rem;
     }
     .preset-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .preset-button,
     .control-button,
@@ -246,19 +267,24 @@ TIMER_TEMPLATE = """
       background: var(--button);
       color: var(--button-text);
       font: inherit;
-      padding: 14px 12px;
+      padding: 12px 11px;
       cursor: pointer;
     }
     .preset-button.is-active,
-    .control-button.primary,
     .tool-button.is-active {
       background: var(--button-active);
       border-color: #2a333c;
       color: var(--text-hot);
     }
+    .control-button.primary {
+      background: linear-gradient(180deg, #13241a 0%, #0d1711 100%);
+      border-color: #6cab7b;
+      box-shadow: inset 0 0 0 1px rgba(150, 211, 166, 0.22);
+      color: #e4f2e8;
+    }
     .preset-button {
-      padding: 16px 10px;
-      min-height: 86px;
+      padding: 13px 9px;
+      min-height: 74px;
     }
     .preset-name {
       display: block;
@@ -276,7 +302,7 @@ TIMER_TEMPLATE = """
     .adjustments,
     .tools {
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .controls {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -292,11 +318,11 @@ TIMER_TEMPLATE = """
       border-radius: 24px;
       background: linear-gradient(180deg, rgba(12, 15, 18, 0.96), rgba(9, 11, 14, 0.96));
       box-shadow: var(--shadow);
-      padding: 14px;
+      padding: 12px;
     }
     .panel h2 {
-      margin: 0 0 12px;
-      font-size: 1rem;
+      margin: 0 0 10px;
+      font-size: 0.95rem;
       color: var(--text-mid);
     }
     details {
@@ -307,7 +333,7 @@ TIMER_TEMPLATE = """
     }
     summary {
       list-style: none;
-      padding: 14px;
+      padding: 12px;
       color: var(--text-mid);
       display: flex;
       align-items: center;
@@ -316,14 +342,14 @@ TIMER_TEMPLATE = """
     }
     summary::-webkit-details-marker { display: none; }
     .settings {
-      padding: 0 14px 14px;
+      padding: 0 12px 12px;
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
     .settings-card {
       border: 1px solid var(--line);
       border-radius: 18px;
-      padding: 12px;
+      padding: 10px;
       background: rgba(15, 18, 22, 0.98);
     }
     .settings-card strong {
@@ -366,6 +392,31 @@ TIMER_TEMPLATE = """
       color: var(--text-soft);
       font-size: 0.82rem;
       line-height: 1.4;
+    }
+    @media (max-width: 560px) {
+      .app {
+        gap: 8px;
+      }
+      .hero {
+        padding: 12px;
+      }
+      .bar-wrap {
+        height: min(18vh, 104px);
+        min-height: 72px;
+      }
+      .bar-time {
+        font-size: clamp(3.3rem, 18vw, 5.1rem);
+      }
+      .meta {
+        flex-wrap: wrap;
+        row-gap: 4px;
+      }
+      .panel {
+        padding: 10px;
+      }
+      .preset-button {
+        min-height: 68px;
+      }
     }
     @keyframes reminder-frame-blink {
       0%, 49% {
@@ -414,11 +465,13 @@ TIMER_TEMPLATE = """
         <h1 id="activeLabel">Leiðari 15</h1>
         <div class="phase" id="phaseLabel">Tilbúið</div>
       </div>
-      <div class="countdown" id="countdown">15:00</div>
       <div class="status" id="statusText">Veldu preset og ýttu á Byrja.</div>
       <div class="bar-wrap" id="progressWrap" aria-hidden="true">
         <div class="bar-fill" id="progressFill"></div>
-        <div class="bar-overlay" id="barOverlay">Tími</div>
+        <div class="bar-overlay">
+          <div class="bar-time" id="countdown">15:00</div>
+          <div class="bar-label" id="barOverlay">Tímataka</div>
+        </div>
       </div>
       <div class="meta">
         <span id="warningMeta">Áminning 5 mín</span>

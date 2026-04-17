@@ -610,7 +610,7 @@ CARD_TEMPLATE = """
       .week-cell {
         min-height: 72px;
         padding: 3px;
-        gap: 3px;
+        gap: 5px;
       }
       .week-cell.is-compact {
         min-height: 56px;
@@ -2400,8 +2400,8 @@ CARD_TEMPLATE = """
         && nowMinutes >= previousMeeting.endMinutes
         && nowMinutes < nextMeeting.startMinutes
       ) {
-        const gapTop = previousMeeting.bottom + 3;
-        const gapBottom = nextMeeting.top - 3;
+        const gapTop = previousMeeting.bottom + 1;
+        const gapBottom = nextMeeting.top - 1;
         if (gapBottom > gapTop) {
           return gapTop + ((gapBottom - gapTop) / 2);
         }
@@ -2477,8 +2477,9 @@ CARD_TEMPLATE = """
       status.classList.remove('visible');
       return;
     }
-    const maxTop = Math.max(board.scrollHeight - 8, 0);
-    const top = clamp(rawTop, 0, maxTop);
+    const lineHeight = line.offsetHeight || 3;
+    const maxTop = Math.max(board.scrollHeight - lineHeight, 0);
+    const top = clamp(rawTop - (lineHeight / 2), 0, maxTop);
     line.style.top = `${top}px`;
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
