@@ -8,20 +8,20 @@
     :root {
       color-scheme: dark;
       --bg: #050607;
-      --panel: #0b0d0f;
-      --panel-2: #101317;
-      --line: #171c21;
-      --text-soft: #5b6570;
-      --text-mid: #7b8794;
-      --text-strong: #cfd6dd;
+      --panel: #090c0f;
+      --panel-2: #0d1114;
+      --line: #12171b;
+      --text-soft: #454e57;
+      --text-mid: #606a74;
+      --text-strong: #bcc6ce;
       --text-hot: #f2f5f7;
       --bar-track: #0f1316;
       --bar-fill: #232b31;
       --bar-final: #7d8a96;
       --bar-expired: #f4f7fa;
-      --button: #11161a;
-      --button-active: #202830;
-      --button-text: #c6cdd5;
+      --button: #0d1114;
+      --button-active: #151b20;
+      --button-text: #87919b;
       --shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
     }
     * { box-sizing: border-box; }
@@ -32,7 +32,7 @@
       background:
         radial-gradient(circle at top center, rgba(255, 255, 255, 0.03), transparent 28%),
         linear-gradient(180deg, #07090b 0%, var(--bg) 100%);
-      color: var(--text-mid);
+      color: var(--text-soft);
     }
     body[data-phase="final"] {
       color: var(--text-strong);
@@ -72,7 +72,7 @@
     .topbar button:focus-visible,
     summary:hover,
     summary:focus-visible {
-      color: var(--text-mid);
+      color: var(--text-soft);
     }
     .hero {
       border: 1px solid var(--line);
@@ -97,12 +97,12 @@
     }
     .title-row h1 {
       margin: 0;
-      color: var(--text-mid);
+      color: #56606a;
       font-size: clamp(1.45rem, 7vw, 2rem);
       line-height: 1;
     }
     .phase {
-      color: var(--text-soft);
+      color: #4c555f;
       font-size: 0.95rem;
       white-space: nowrap;
     }
@@ -110,7 +110,7 @@
       min-height: 1.3em;
       margin-top: 8px;
       text-align: center;
-      color: var(--text-soft);
+      color: #4b545d;
       font-size: 0.95rem;
     }
     body[data-phase="final"] .status,
@@ -123,7 +123,7 @@
       min-height: 78px;
       border-radius: 24px;
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, #090d10 0%, var(--bar-track) 100%);
+      background: linear-gradient(180deg, #080c0f 0%, var(--bar-track) 100%);
       overflow: hidden;
       position: relative;
     }
@@ -134,9 +134,13 @@
       background: linear-gradient(90deg, #1b2228 0%, var(--bar-fill) 100%);
       transition: width 180ms linear;
     }
+    .bar-wrap.has-active-frame {
+      border-color: #3f5b46;
+      box-shadow: 0 0 0 3px rgba(82, 130, 94, 0.22), 0 0 0 7px rgba(82, 130, 94, 0.06);
+    }
     .bar-wrap.has-reminder-frame {
-      border-color: #ff9d2f;
-      box-shadow: 0 0 0 4px rgba(255, 157, 47, 0.96), 0 0 0 9px rgba(255, 157, 47, 0.24);
+      border-color: #7a5a31;
+      box-shadow: 0 0 0 3px rgba(255, 157, 47, 0.34), 0 0 0 7px rgba(255, 157, 47, 0.08);
     }
     .bar-wrap.has-reminder-frame.is-final-frame {
       animation: reminder-frame-blink 0.8s steps(2, end) infinite;
@@ -216,7 +220,7 @@
       display: flex;
       justify-content: space-between;
       gap: 8px;
-      color: var(--text-soft);
+      color: #4b545d;
       font-size: 0.82rem;
     }
     .preset-grid {
@@ -232,7 +236,7 @@
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 20px;
-      background: var(--button);
+      background: linear-gradient(180deg, #0d1114 0%, #0b0f12 100%);
       color: var(--button-text);
       font: inherit;
       padding: 12px 11px;
@@ -242,13 +246,13 @@
     .tool-button.is-active {
       background: var(--button-active);
       border-color: #2a333c;
-      color: var(--text-hot);
+      color: #aab4bd;
     }
     .control-button.primary {
       background: linear-gradient(180deg, #13241a 0%, #0d1711 100%);
       border-color: #6cab7b;
       box-shadow: inset 0 0 0 1px rgba(150, 211, 166, 0.22);
-      color: #e4f2e8;
+      color: #c9ddcf;
     }
     .preset-button {
       padding: 13px 9px;
@@ -284,25 +288,25 @@
     .panel {
       border: 1px solid var(--line);
       border-radius: 24px;
-      background: linear-gradient(180deg, rgba(12, 15, 18, 0.96), rgba(9, 11, 14, 0.96));
+      background: linear-gradient(180deg, rgba(10, 13, 16, 0.98), rgba(8, 10, 13, 0.98));
       box-shadow: var(--shadow);
       padding: 12px;
     }
     .panel h2 {
       margin: 0 0 10px;
       font-size: 0.95rem;
-      color: var(--text-mid);
+      color: #56606a;
     }
     details {
       border: 1px solid var(--line);
       border-radius: 20px;
-      background: rgba(9, 12, 14, 0.96);
+      background: rgba(8, 11, 13, 0.98);
       overflow: hidden;
     }
     summary {
       list-style: none;
       padding: 12px;
-      color: var(--text-mid);
+      color: #56606a;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -318,11 +322,11 @@
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 10px;
-      background: rgba(15, 18, 22, 0.98);
+      background: rgba(11, 14, 17, 0.98);
     }
     .settings-card strong {
       display: block;
-      color: var(--text-mid);
+      color: #59636d;
       margin-bottom: 10px;
       font-size: 0.96rem;
     }
@@ -334,16 +338,16 @@
     .settings-field {
       display: grid;
       gap: 5px;
-      color: var(--text-soft);
+      color: #4b545d;
       font-size: 0.82rem;
     }
     .settings-field input {
       width: 100%;
       min-width: 0;
-      border: 1px solid #20262c;
+      border: 1px solid #1a2025;
       border-radius: 14px;
-      background: #0d1114;
-      color: var(--text-hot);
+      background: #0b0f12;
+      color: #aab4bd;
       padding: 11px 12px;
       font: inherit;
     }
@@ -357,7 +361,7 @@
       grid-template-columns: 1fr;
     }
     .footer-note {
-      color: var(--text-soft);
+      color: #4a535c;
       font-size: 0.82rem;
       line-height: 1.4;
     }
@@ -432,7 +436,7 @@
         <h1 id="activeLabel">Leiðari 15</h1>
         <div class="phase" id="phaseLabel">Tilbúið</div>
       </div>
-      <div class="status" id="statusText">Veldu preset og ýttu á Byrja.</div>
+      <div class="status" id="statusText">Veldu forstillingu og ýttu á Byrja.</div>
       <div class="bar-wrap" id="progressWrap" aria-hidden="true">
         <div class="bar-fill" id="progressFill"></div>
         <div class="bar-overlay">
@@ -449,7 +453,7 @@
     </section>
 
     <section class="panel">
-      <h2>Preset</h2>
+      <h2>Forstillingar</h2>
       <div class="preset-grid" id="presetGrid"></div>
     </section>
 
@@ -472,7 +476,7 @@
     <details>
       <summary>
         <span>Stillingar</span>
-        <span id="settingsHint">Preset og custom tímar</span>
+        <span id="settingsHint">Forstillingar og custom tímar</span>
       </summary>
       <div class="settings">
         <div class="settings-card" id="presetSettings"></div>
@@ -505,7 +509,7 @@
         <div class="settings-card">
           <strong>Verkfæri</strong>
           <div class="settings-actions single">
-            <button type="button" class="settings-button" id="resetPresetsButton">Endurheimta sjálfgefin preset</button>
+            <button type="button" class="settings-button" id="resetPresetsButton">Endurheimta sjálfgefnar forstillingar</button>
           </div>
         </div>
 
@@ -673,7 +677,7 @@
           return 'Tími liðinn';
         }
         if (state.deadlineAt === null && state.remainingSeconds === state.totalSeconds) {
-          return 'Veldu preset og ýttu á Byrja.';
+          return 'Veldu forstillingu og ýttu á Byrja.';
         }
         if (state.deadlineAt === null) {
           return 'Timer í pásu';
@@ -732,13 +736,15 @@
         const percent = state.totalSeconds > 0
           ? Math.max(0, Math.min(100, ((state.totalSeconds - Math.max(state.remainingSeconds, 0)) / state.totalSeconds) * 100))
           : 0;
+        const hasStarted = state.deadlineAt !== null || state.remainingSeconds !== state.totalSeconds;
         const reminderFrameActive = state.warningSeconds > 0
           && state.remainingSeconds <= state.warningSeconds
           && state.remainingSeconds >= 0
-          && (state.deadlineAt !== null || state.remainingSeconds !== state.totalSeconds);
+          && hasStarted;
         elements.progressFill.style.width = `${phase === 'expired' ? 100 : percent}%`;
         elements.progressFill.classList.toggle('is-final', phase === 'final');
         elements.progressFill.classList.toggle('is-expired', phase === 'expired');
+        elements.progressWrap.classList.toggle('has-active-frame', hasStarted && !reminderFrameActive && phase !== 'expired');
         elements.progressWrap.classList.toggle('has-reminder-frame', reminderFrameActive);
         elements.progressWrap.classList.toggle('is-final-frame', phase === 'final');
         elements.progressWrap.classList.toggle('is-expired-frame', phase === 'expired');
