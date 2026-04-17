@@ -249,6 +249,12 @@
       color: #aab4bd;
     }
     .control-button.primary {
+      background: linear-gradient(180deg, #0d1114 0%, #0b0f12 100%);
+      border-color: var(--line);
+      box-shadow: none;
+      color: var(--button-text);
+    }
+    .control-button.primary.is-ready-start {
       background: linear-gradient(180deg, #13241a 0%, #0d1711 100%);
       border-color: #6cab7b;
       box-shadow: inset 0 0 0 1px rgba(150, 211, 166, 0.22);
@@ -760,12 +766,14 @@
       function syncButtons() {
         const running = state.deadlineAt !== null;
         const paused = state.deadlineAt === null && state.remainingSeconds !== state.totalSeconds;
+        const readyToStart = !running && !paused;
         elements.startButton.disabled = false;
         elements.startButton.textContent = running
           ? 'Pása'
           : paused
             ? 'Halda áfram'
             : 'Byrja';
+        elements.startButton.classList.toggle('is-ready-start', readyToStart);
         elements.resetButton.disabled = false;
       }
 
