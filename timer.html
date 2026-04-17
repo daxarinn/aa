@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Funda timer</title>
+  <title>Fundastund</title>
   <style>
     :root {
       color-scheme: dark;
@@ -431,7 +431,7 @@
     </div>
 
     <section class="hero">
-      <p class="label">Funda timer</p>
+      <p class="label">Fundastund</p>
       <div class="title-row">
         <h1 id="activeLabel">Leiðari 15</h1>
         <div class="phase" id="phaseLabel">Tilbúið</div>
@@ -649,6 +649,13 @@
         return `${prefix}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
       }
 
+      function countdownDisplaySeconds() {
+        if (state.remainingSeconds < 0) {
+          return state.remainingSeconds + 1;
+        }
+        return state.remainingSeconds;
+      }
+
       function currentPhase() {
         if (state.remainingSeconds < 0) return 'expired';
         if (
@@ -764,10 +771,11 @@
 
       function render() {
         const phase = currentPhase();
+        const countdownSeconds = countdownDisplaySeconds();
         elements.body.dataset.phase = phase;
         elements.activeLabel.textContent = state.label;
         elements.phaseLabel.textContent = phaseLabelText();
-        elements.countdown.textContent = formatClock(state.remainingSeconds);
+        elements.countdown.textContent = formatClock(countdownSeconds);
         elements.statusText.textContent = statusText();
         elements.warningMeta.textContent = `Áminning ${state.warningSeconds > 0 ? formatClock(state.warningSeconds) : 'engin'}`;
         elements.totalMeta.textContent = `Gefið ${formatClock(state.totalSeconds)}`;
@@ -787,8 +795,8 @@
         syncButtons();
         renderPresetButtons();
         document.title = phase === 'expired'
-          ? `YFIRTÍMI ${formatClock(Math.abs(state.remainingSeconds))} | Funda timer`
-          : `${formatClock(state.remainingSeconds)} | ${state.label}`;
+          ? `YFIRTÍMI ${formatClock(Math.abs(countdownSeconds))} | Fundastund`
+          : `${formatClock(countdownSeconds)} | ${state.label}`;
       }
 
       function stopTicker() {

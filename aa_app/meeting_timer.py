@@ -464,7 +464,7 @@ TIMER_TEMPLATE = """
     </div>
 
     <section class="hero">
-      <p class="label">Funda timer</p>
+      <p class="label">Fundastund</p>
       <div class="title-row">
         <h1 id="activeLabel">Leiðari 15</h1>
         <div class="phase" id="phaseLabel">Tilbúið</div>
@@ -690,6 +690,13 @@ TIMER_TEMPLATE = """
         return `${prefix}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
       }
 
+      function countdownDisplaySeconds() {
+        if (state.remainingSeconds < 0) {
+          return state.remainingSeconds + 1;
+        }
+        return state.remainingSeconds;
+      }
+
       function formatMinutesLabel(minutes) {
         return `${minutes} mín`;
       }
@@ -697,6 +704,14 @@ TIMER_TEMPLATE = """
       function currentPhase() {
         if (state.remainingSeconds < 0) {
           return 'expired';
+        }
+        if (
+          state.warningSeconds > 0
+          && state.remainingSeconds <= state.warningSeconds
+          && state.remainingSeconds > 10
+          && (state.deadlineAt !== null || state.remainingSeconds !== state.totalSeconds)
+        ) {
+          return 'warning';
         }
         if (state.remainingSeconds <= 10 && (state.deadlineAt !== null || state.remainingSeconds !== state.totalSeconds)) {
           return 'final';
@@ -742,6 +757,7 @@ TIMER_TEMPLATE = """
         if (state.remainingSeconds < 0) return 'Útrunnið';
         if (state.deadlineAt === null && state.remainingSeconds === state.totalSeconds) return 'Tilbúið';
         if (state.deadlineAt === null) return 'Í pásu';
+        if (state.warningSeconds > 0 && state.remainingSeconds <= state.warningSeconds && state.remainingSeconds > 10) return 'Áminning';
         if (state.remainingSeconds <= 10) return '10 sek eftir';
         return 'Í gangi';
       }
@@ -810,16 +826,23 @@ TIMER_TEMPLATE = """
 
       function render() {
         const phase = currentPhase();
+        const countdownSeconds = countdownDisplaySeconds();
         elements.body.dataset.phase = phase;
         elements.activeLabel.textContent = state.label;
         elements.phaseLabel.textContent = phaseLabelText();
-        elements.countdown.textContent = formatClock(state.remainingSeconds);
+        elements.countdown.textContent = formatClock(countdownSeconds);
         elements.statusText.textContent = statusText();
         elements.warningMeta.textContent = `Áminning ${state.warningSeconds > 0 ? formatClock(state.warningSeconds) : 'engin'}`;
         elements.totalMeta.textContent = `Gefið ${formatClock(state.totalSeconds)}`;
         elements.elapsedMeta.textContent = `Liðið ${formatClock(elapsedSinceStartSeconds())}`;
         elements.deadlineMeta.textContent = deadlineText();
-        elements.barOverlay.textContent = phase === 'expired' ? 'Tími' : phase === 'final' ? 'Lokasekúndur' : 'Tímataka';
+        elements.barOverlay.textContent = phase === 'expired'
+          ? 'Tími'
+          : phase === 'final'
+            ? 'Lokasekúndur'
+            : phase === 'warning'
+              ? 'Áminning'
+              : 'Tímataka';
         elements.settingsHint.textContent = getSelectedPreset()
           ? `${getSelectedPreset().label} · ${getSelectedPreset().duration_minutes} mín`
           : 'Custom tími';
@@ -827,8 +850,8 @@ TIMER_TEMPLATE = """
         syncButtons();
         renderPresetButtons();
         document.title = phase === 'expired'
-          ? `YFIRTÍMI ${formatClock(Math.abs(state.remainingSeconds))} | {{ page_title }}`
-          : `${formatClock(state.remainingSeconds)} | ${state.label}`;
+          ? `YFIRTÍMI ${formatClock(Math.abs(countdownSeconds))} | {{ page_title }}`
+          : `${formatClock(countdownSeconds)} | ${state.label}`;
       }
 
       function stopTicker() {
@@ -1098,7 +1121,7 @@ def create_meeting_timer_blueprint(
     name: str = "meeting_timer",
     home_href: str = "/",
     home_label: str = "Til baka í fundaskrá",
-    page_title: str = "Funda timer",
+    page_title: str = "Fundastund",
 ) -> Blueprint:
     blueprint = Blueprint(name, __name__)
 
@@ -1122,7 +1145,7 @@ def register_meeting_timer(
     url_prefix: str = "/timer",
     home_href: str = "/",
     home_label: str = "Til baka í fundaskrá",
-    page_title: str = "Funda timer",
+    page_title: str = "Fundastund",
 ) -> None:
     app.register_blueprint(
         create_meeting_timer_blueprint(
