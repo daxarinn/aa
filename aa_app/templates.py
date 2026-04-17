@@ -2478,8 +2478,9 @@ CARD_TEMPLATE = """
       return;
     }
     const lineHeight = line.offsetHeight || 3;
+    const visualOffset = 1;
     const maxTop = Math.max(board.scrollHeight - lineHeight, 0);
-    const top = clamp(rawTop - (lineHeight / 2), 0, maxTop);
+    const top = clamp(rawTop - (lineHeight / 2) + visualOffset, 0, maxTop);
     line.style.top = `${top}px`;
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
