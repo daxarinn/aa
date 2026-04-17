@@ -714,6 +714,7 @@ CARD_TEMPLATE = """
       left: calc(var(--week-time-column-width) + 1px);
       right: 0;
       height: 3px;
+      transform: translateY(-50%);
       background: rgba(214, 40, 40, 0.92);
       box-shadow:
         0 0 0 1px rgba(255,255,255,0.58),
@@ -2478,9 +2479,9 @@ CARD_TEMPLATE = """
       return;
     }
     const lineHeight = line.offsetHeight || 3;
-    const visualOffset = 1;
-    const maxTop = Math.max(board.scrollHeight - lineHeight, 0);
-    const top = clamp(rawTop - (lineHeight / 2) + visualOffset, 0, maxTop);
+    const minCenter = lineHeight / 2;
+    const maxCenter = Math.max(board.scrollHeight - (lineHeight / 2), minCenter);
+    const top = clamp(rawTop, minCenter, maxCenter);
     line.style.top = `${top}px`;
     label.textContent = `Núna ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     line.classList.add('visible');
