@@ -713,9 +713,11 @@ CARD_TEMPLATE = """
       position: absolute;
       left: calc(var(--week-time-column-width) + 1px);
       right: 0;
-      height: 1px;
-      background: rgba(214, 40, 40, 0.7);
-      box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
+      height: 3px;
+      background: rgba(214, 40, 40, 0.92);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.58),
+        0 0 16px rgba(214, 40, 40, 0.18);
       z-index: 1;
       pointer-events: none;
       display: none;
@@ -981,6 +983,7 @@ CARD_TEMPLATE = """
         <a href="/?{{ week_query_string }}" class="{% if filters["view"] == "week" %}active{% endif %}">Vikusýn</a>
       </div>
       <div class="calendar-tools">
+        <a href="/timer">Funda timer</a>
         <a href="/favorites.ics" id="favoritesCalendarDownload">Dagatal (.ics)</a>
         <button type="button" id="favoritesCalendarSubscribe">Afrita áskriftarslóð</button>
         <button type="button" id="favoritesCodeCopy">Afrita favorites-kóða</button>
@@ -2297,6 +2300,7 @@ CARD_TEMPLATE = """
   });
   const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const isCompactWeekView = () => window.matchMedia('(max-width: 720px)').matches;
 
   const visibleDayOrders = () => {
     const board = getBoard();
@@ -2382,6 +2386,26 @@ CARD_TEMPLATE = """
     const anchorMeeting = meetings.find((meeting) => meeting.endMinutes > nowMinutes) || null;
     if (!anchorMeeting) {
       return null;
+    }
+
+    if (isCompactWeekView()) {
+      const previousMeeting = [...meetings]
+        .reverse()
+        .find((meeting) => meeting.endMinutes <= nowMinutes) || null;
+      const nextMeeting = meetings.find((meeting) => meeting.startMinutes > nowMinutes) || null;
+
+      if (
+        previousMeeting
+        && nextMeeting
+        && nowMinutes >= previousMeeting.endMinutes
+        && nowMinutes < nextMeeting.startMinutes
+      ) {
+        const gapTop = previousMeeting.bottom + 3;
+        const gapBottom = nextMeeting.top - 3;
+        if (gapBottom > gapTop) {
+          return gapTop + ((gapBottom - gapTop) / 2);
+        }
+      }
     }
 
     return Math.max(anchorMeeting.top - 6, 0);

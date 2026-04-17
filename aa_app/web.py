@@ -24,6 +24,7 @@ from .config import (
     SIZE_BIN_OPTIONS,
     WEEKDAY_ORDER,
 )
+from .meeting_timer import register_meeting_timer
 from .parsing import capital_region_mask, current_iceland_weekday, format_scraped_at_short, normalize_space, sanitize_rows_for_render
 from .storage import (
     build_favorites_calendar_ics,
@@ -322,6 +323,7 @@ def admin_secret_key(db_path: Path) -> str:
 def build_app(db_path: Path) -> Flask:
     app = Flask(__name__)
     app.secret_key = admin_secret_key(db_path)
+    register_meeting_timer(app, url_prefix="/timer", home_href="/", home_label="Til baka í fundaskrá")
 
     def is_admin_authenticated() -> bool:
         return bool(session.get("aa_admin_ok"))
